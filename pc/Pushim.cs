@@ -22,15 +22,18 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("ביטיפוש")]
 [assembly: System.Reflection.AssemblyProduct("ביטיפוש")]
-[assembly: System.Reflection.AssemblyVersion("1.6.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.6.0.0")]
+[assembly: System.Reflection.AssemblyDescription("BTPush - news and Windows notifications to an offline player over Bluetooth")]
+[assembly: System.Reflection.AssemblyCompany("Xnet2")]
+[assembly: System.Reflection.AssemblyCopyright("Open source - github.com/Xnet2/btpush")]
+[assembly: System.Reflection.AssemblyVersion("1.6.2.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.6.2.0")]
 
 namespace Pushim
 {
     static class Program
     {
         public static readonly Guid ServiceUuid = new Guid("b3a7c2d4-5e6f-4a1b-9c8d-7e6f5a4b3c21");
-        public const string Version = "1.6";
+        public const string Version = "1.6.2";
         public static bool TestMode;
 
         [STAThread]
@@ -117,6 +120,15 @@ namespace Pushim
             try { SetProcessDPIAware(); } catch { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            if (AutoStart.RunningFromTemp() && !TestMode)
+            {
+                // הורץ ישר מתוך ה-ZIP: לא ממשיכים, כדי לא לרשום הפעלה אוטומטית לתיקייה שתימחק
+                MessageBox.Show(
+                    "צריך לחלץ את הקבצים לפני ההפעלה.\n\nלוחצים לחיצה ימנית על BTPush-PC.zip ← \"חלץ הכל\", ואז מפעילים את BTPush.exe מהתיקייה שנוצרה.",
+                    "ביטיפוש", MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1,
+                    MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
             var core = new Core();
             core.Start();
             var app = new TrayApp(core, !HasArg(args, "/tray"), showEvent);
@@ -1662,6 +1674,15 @@ namespace Pushim
         readonly Dot[] srcDot = new Dot[3];
         readonly ListBox logBox = new ListBox();
         readonly CheckBox autoStart = new CheckBox();
+        bool syncing;
+
+        /// <summary>מעדכן את תיבת הסימון לפי הרישום, בלי לכתוב לרישום.</summary>
+        public void SyncAutoStart()
+        {
+            syncing = true;
+            autoStart.Checked = AutoStart.IsOn();
+            syncing = false;
+        }
         bool loadingDevices;
         public bool AllowClose;
 
@@ -1736,7 +1757,7 @@ namespace Pushim
             autoStart.Location = new Point(20, 566);
             autoStart.ForeColor = Theme.Text; autoStart.BackColor = Theme.Bg;
             autoStart.Checked = AutoStart.IsOn();
-            autoStart.CheckedChanged += (s, e) => AutoStart.Set(autoStart.Checked);
+            autoStart.CheckedChanged += (s, e) => { if (!syncing) AutoStart.Set(autoStart.Checked); };
             Controls.Add(autoStart);
             ResumeLayout(false);
             PerformLayout();
@@ -1830,22 +1851,70 @@ namespace Pushim
     static class AutoStart
     {
         const string Key = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+        static string Command { get { return "\"" + Application.ExecutablePath + "\" /tray"; } }
+
         public static bool IsOn()
         {
             try { using (var k = Registry.CurrentUser.OpenSubKey(Key)) return k != null && k.GetValue("Pushim") != null; }
             catch { return false; }
         }
+
+        /// <summary>האם הרישום הקיים מצביע על הקובץ הזה (כדי לא לכתוב לרישום בלי צורך).</summary>
+        public static bool PointsHere()
+        {
+            try { using (var k = Registry.CurrentUser.OpenSubKey(Key)) return k != null && string.Equals(k.GetValue("Pushim") as string, Command, StringComparison.OrdinalIgnoreCase); }
+            catch { return false; }
+        }
+
+        /// <summary>נקרא רק אחרי שהמשתמש בחר בזה (בשאלה הראשונה או בתיבת הסימון בחלון).</summary>
         public static void Set(bool on)
         {
             try
             {
                 using (var k = Registry.CurrentUser.CreateSubKey(Key))
                 {
-                    if (on) k.SetValue("Pushim", "\"" + Application.ExecutablePath + "\" /tray");
+                    if (on) k.SetValue("Pushim", Command);
                     else if (k.GetValue("Pushim") != null) k.DeleteValue("Pushim");
                 }
             }
             catch { }
+        }
+
+        /// <summary>האם התוכנה רצה מתוך קובץ דחוס או מתיקייה זמנית (בלי חילוץ).</summary>
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        static extern int GetLongPathName(string shortPath, StringBuilder longPath, int size);
+
+        /// <summary>הנתיב בצורה המלאה (בלי קיצורים כמו F8DF~1), כדי שאפשר יהיה להשוות נתיבים.</summary>
+        static string LongPath(string p)
+        {
+            try
+            {
+                var sb = new StringBuilder(1024);
+                int n = GetLongPathName(p, sb, sb.Capacity);
+                return n > 0 && n < sb.Capacity ? sb.ToString() : p;
+            }
+            catch { return p; }
+        }
+
+        public static bool RunningFromTemp()
+        {
+            string exe = LongPath(Application.ExecutablePath);
+            string[] temps = {
+                Path.GetTempPath(),
+                Environment.GetEnvironmentVariable("TEMP"),
+                Environment.GetEnvironmentVariable("TMP"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp")
+            };
+            foreach (var t in temps)
+            {
+                if (string.IsNullOrEmpty(t)) continue;
+                string lt;
+                try { lt = LongPath(Path.GetFullPath(t)).TrimEnd('\\') + "\\"; } catch { continue; }
+                if (exe.StartsWith(lt, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return exe.IndexOf("\\Rar$", StringComparison.OrdinalIgnoreCase) >= 0
+                || exe.IndexOf("\\7zO", StringComparison.OrdinalIgnoreCase) >= 0
+                || exe.IndexOf(".zip\\", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 
@@ -1883,13 +1952,20 @@ namespace Pushim
 
             if (!core.St.AutoStartDone && !Program.TestMode)
             {
-                AutoStart.Set(true);
+                // הפעלה ראשונה: שואלים, ולא נרשמים להפעלה אוטומטית בלי אישור
+                var ans = MessageBox.Show(
+                    "להפעיל את ביטיפוש אוטומטית עם כל הדלקה של המחשב?\n\nכך הנגן יקבל עדכונים בלי שצריך לפתוח את התוכנה כל פעם. אפשר לשנות את זה בכל זמן בחלון התוכנה.",
+                    "ביטיפוש", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1,
+                    MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                AutoStart.Set(ans == DialogResult.Yes);
                 core.St.AutoStartDone = true;
                 core.SaveState();
+                form.SyncAutoStart();
             }
-            else if (!Program.TestMode && AutoStart.IsOn())
+            else if (!Program.TestMode && AutoStart.IsOn() && !AutoStart.PointsHere())
             {
-                AutoStart.Set(true);   // מעדכן את הנתיב, למשל אחרי שהקובץ שונה ל-BTPush.exe
+                // המשתמש כבר אישר בעבר, והקובץ עבר מקום או שינה שם: מעדכנים את הנתיב
+                AutoStart.Set(true);
             }
 
             core.Changed += () => { dirty = true; };
