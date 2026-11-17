@@ -22,15 +22,15 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("ביטיפוש")]
 [assembly: System.Reflection.AssemblyProduct("ביטיפוש")]
-[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.3.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.6.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.6.0.0")]
 
 namespace Pushim
 {
     static class Program
     {
         public static readonly Guid ServiceUuid = new Guid("b3a7c2d4-5e6f-4a1b-9c8d-7e6f5a4b3c21");
-        public const string Version = "1.3";
+        public const string Version = "1.6";
         public static bool TestMode;
 
         [STAThread]
@@ -41,6 +41,30 @@ namespace Pushim
             {
                 ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
                 File.WriteAllText(args[1], new Core().SelfTest(), Encoding.UTF8);
+                return;
+            }
+            if (args.Length >= 4 && args[0] == "/backfill")
+            {
+                // בדיקה: /backfill <chat> <hours> <out.txt>
+                ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+                var bc = new Core { St = State.Load(), Captured = new List<Item>() };
+                bc.Backfill(args[1], int.Parse(args[2]));
+                var sb = new StringBuilder();
+                sb.AppendLine("count: " + bc.Captured.Count);
+                if (bc.Captured.Count > 0)
+                {
+                    sb.AppendLine("first: " + bc.Captured[0].ToJson(false));
+                    sb.AppendLine("last: " + bc.Captured[bc.Captured.Count - 1].ToJson(false));
+                }
+                File.WriteAllText(args[3], sb.ToString(), Encoding.UTF8);
+                return;
+            }
+            if (args.Length >= 3 && args[0] == "/image")
+            {
+                // בדיקה: /image <url> <out.jpg>
+                ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+                var ic = new Core { St = State.Load(), Captured = new List<Item>() };
+                ic.SendImageForTest(args[1], args[2]);
                 return;
             }
             if (args.Length >= 2 && args[0] == "/icons")
@@ -141,9 +165,11 @@ namespace Pushim
     class Item
     {
         public string Id, Src, Sub, Title, Text;
+        public string Img = "";    // כתובות התמונות (מופרדות בשורה), נטענות רק כשהנגן מבקש
         public string Icon = "";   // מזהה התוכנה (להתראות מחשב), לפיו הנגן מציג את האייקון
         public long Time;          // מילישניות מ-1970 (UTC)
         public DateTime Queued = DateTime.UtcNow;
+        public bool Silent;        // נשלח בשאיבה: נשמר בנגן בלי פוש
 
         public string ToJson(bool backlog)
         {
@@ -151,7 +177,9 @@ namespace Pushim
             d["t"] = "item"; d["id"] = Id; d["src"] = Src; d["sub"] = Sub ?? "";
             d["title"] = Title ?? ""; d["text"] = Text ?? ""; d["time"] = Time;
             if (!string.IsNullOrEmpty(Icon)) d["icon"] = Icon;
-            if (backlog) d["bl"] = 1;
+            if (!string.IsNullOrEmpty(Img)) d["img"] = Img;
+            if (Silent) d["bl"] = 2;
+            else if (backlog) d["bl"] = 1;
             return Json.Ser(d);
         }
     }
@@ -657,6 +685,20 @@ namespace Pushim
             if (t == "ping") SendLine("{\"t\":\"pong\"}");
             else if (t == "config") ApplyConfig(d);
             else if (t == "test") SendTest();
+            else if (t == "image")
+            {
+                string id = Json.Str(d, "id"), url = Json.Str(d, "url");
+                int idx = (int)Json.Long(d, "idx");
+                var th = new Thread(() => SendImage(id, idx, url)) { IsBackground = true, Name = "image" };
+                th.Start();
+            }
+            else if (t == "backfill")
+            {
+                string chat = Json.Str(d, "chat");
+                int hours = (int)Math.Max(1, Math.Min(72, Json.Long(d, "hours")));
+                var th = new Thread(() => Backfill(chat, hours)) { IsBackground = true, Name = "backfill" };
+                th.Start();
+            }
         }
 
         void ApplyConfig(Dictionary<string, object> d)
@@ -788,12 +830,13 @@ namespace Pushim
                 if (Json.Bool(m, "deleted", false) || Json.Bool(m, "is_ads", false)) continue;
                 string title, body;
                 Clean.Hagizra(Json.Str(m, "text"), out title, out body);
-                if (title.Length == 0 && body.Length == 0) continue;   // רק תמונה או סרטון
+                string imgs = string.Join("\n", Clean.Images(Json.Str(m, "text")).ToArray());
+                if (title.Length == 0 && body.Length == 0 && imgs.Length == 0) continue;   // רק סרטון
                 long time = NowMs();
                 DateTime ts;
                 if (DateTime.TryParse(Json.Str(m, "timestamp"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out ts))
                     time = (long)(ts - new DateTime(1970, 1, 1)).TotalMilliseconds;
-                Enqueue(new Item { Id = "h" + Json.Long(m, "id"), Src = "hagizra", Sub = "", Title = title, Text = body, Time = time });
+                Enqueue(new Item { Id = "h" + Json.Long(m, "id"), Src = "hagizra", Sub = "", Title = title, Text = body, Time = time, Img = imgs });
             }
         }
 
@@ -823,12 +866,13 @@ namespace Pushim
                 string ch = Json.Str(m, "source");
                 if (off.Contains(ch)) continue;
                 string text = Clean.Plain(Json.Str(m, "description"));
-                if (text.Length == 0) continue;
+                string aimg = Json.Str(m, "image_url");
+                if (text.Length == 0 && aimg.Length == 0) continue;
                 long time = NowMs();
                 DateTime ts;
                 if (DateTime.TryParseExact(Json.Str(m, "created_at"), "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out ts))
                     time = (long)(ts.ToUniversalTime() - new DateTime(1970, 1, 1)).TotalMilliseconds;
-                Enqueue(new Item { Id = "a" + Json.Long(m, "id"), Src = "authenti", Sub = ch, Title = "", Text = text, Time = time });
+                Enqueue(new Item { Id = "a" + Json.Long(m, "id"), Src = "authenti", Sub = ch, Title = "", Text = text, Time = time, Img = aimg });
             }
         }
 
@@ -890,6 +934,219 @@ namespace Pushim
                 else lastOrder = -1;
                 Thread.Sleep(2000);
             }
+        }
+
+        // ---------------- תמונות: הנגן מבקש, המחשב מוריד, מקטין ושולח
+
+        void SendImage(string id, int idx, string url)
+        {
+            var m = new Dictionary<string, object>();
+            m["id"] = id; m["idx"] = idx;
+            try
+            {
+                if (!url.StartsWith("http://") && !url.StartsWith("https://")) throw new Exception("כתובת לא תקינה");
+                byte[] raw = Download(url, 25 * 1024 * 1024);
+                byte[] jpg = ImageTools.ToJpeg(raw, 720, 78);
+                m["t"] = "image_data";
+                m["data"] = Convert.ToBase64String(jpg);
+                Log("נשלחה תמונה (" + (jpg.Length / 1024) + " KB)");
+            }
+            catch (Exception e)
+            {
+                m["t"] = "image_error";
+                m["error"] = e.Message;
+                Log("טעינת תמונה נכשלה: " + e.Message);
+            }
+            if (Captured == null) SendLine(Json.Ser(m));
+            else LastImage = m;
+        }
+
+        public Dictionary<string, object> LastImage;   // לבדיקה עצמית
+
+        public void SendImageForTest(string url, string outPath)
+        {
+            SendImage("test", 0, url);
+            if (LastImage != null && LastImage.ContainsKey("data"))
+                File.WriteAllBytes(outPath, System.Convert.FromBase64String((string)LastImage["data"]));
+            else
+                File.WriteAllText(outPath + ".txt", LastImage == null ? "null" : Json.Ser(LastImage), Encoding.UTF8);
+        }
+
+        static byte[] Download(string url, int max)
+        {
+            var r = (HttpWebRequest)WebRequest.Create(url);
+            r.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BTPush/" + Program.Version;
+            r.Timeout = 30000; r.ReadWriteTimeout = 30000;
+            using (var resp = (HttpWebResponse)r.GetResponse())
+            {
+                string ct = resp.ContentType ?? "";
+                if (ct.StartsWith("text/", StringComparison.OrdinalIgnoreCase)) throw new Exception("התמונה לא זמינה (אולי נחסמה בסינון)");
+                using (var s = resp.GetResponseStream())
+                using (var ms = new MemoryStream())
+                {
+                    var buf = new byte[65536];
+                    int n;
+                    while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                    {
+                        ms.Write(buf, 0, n);
+                        if (ms.Length > max) throw new Exception("התמונה גדולה מדי");
+                    }
+                    return ms.ToArray();
+                }
+            }
+        }
+
+        // ---------------- שאיבה: עדכונים אחרונים של ערוץ אחד, עד 3 ימים אחורה
+
+        public void Backfill(string chat, int hours)
+        {
+            long cutoff = NowMs() - hours * 3600000L;
+            int sent = 0;
+            string err = null;
+            Log("שאיבה של " + hours + " שעות אחורה: " + ChatTitle(chat));
+            try
+            {
+                var items = new List<Item>();
+                if (chat == "hagizra") items = BackfillHagizra(cutoff);
+                else if (chat.StartsWith("a:")) items = BackfillAuthenti(chat.Substring(2), cutoff);
+                else if (chat.StartsWith("pc:")) items = BackfillPc(chat.Substring(3), cutoff);
+                items.Sort((x, y) => x.Time.CompareTo(y.Time));
+                foreach (var it in items)
+                {
+                    it.Silent = true;
+                    if (Captured != null) { Captured.Add(it); sent++; continue; }
+                    if (!SendLine(it.ToJson(false))) { err = "הקשר עם הנגן נותק"; break; }
+                    sent++;
+                }
+            }
+            catch (Exception e) { err = e.Message; }
+            var done = new Dictionary<string, object>();
+            done["t"] = "backfill_done"; done["chat"] = chat; done["count"] = sent;
+            if (err != null) done["error"] = err;
+            if (Captured == null) SendLine(Json.Ser(done));
+            Log("השאיבה הסתיימה: " + sent + " עדכונים" + (err != null ? " (" + err + ")" : ""));
+        }
+
+        static string ChatTitle(string chat)
+        {
+            if (chat == "hagizra") return "הגיזרה";
+            if (chat.StartsWith("a:")) return chat.Substring(2);
+            if (chat.StartsWith("pc:")) return AppNames.Get(chat.Substring(3));
+            return chat;
+        }
+
+        List<Item> BackfillHagizra(long cutoff)
+        {
+            var list = new List<Item>();
+            long offset = 0;
+            for (int page = 0; page < 40; page++)
+            {
+                string url = "https://hagizra.news/api/v3/messages?limit=50" + (offset > 0 ? "&offset=" + offset + "&direction=older" : "");
+                var root = Json.Obj(Json.Parse(Http(url)));
+                var msgs = Json.Arr(root == null ? null : (root.ContainsKey("messages") ? root["messages"] : null));
+                if (msgs == null || msgs.Length == 0) break;
+                bool older = false;
+                long min = long.MaxValue;
+                foreach (var o in msgs)
+                {
+                    var m = Json.Obj(o); if (m == null) continue;
+                    long id = Json.Long(m, "id");
+                    if (id < min) min = id;
+                    long time = 0;
+                    DateTime ts;
+                    if (DateTime.TryParse(Json.Str(m, "timestamp"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out ts))
+                        time = (long)(ts - new DateTime(1970, 1, 1)).TotalMilliseconds;
+                    if (time > 0 && time < cutoff) { older = true; continue; }
+                    if (Json.Bool(m, "deleted", false) || Json.Bool(m, "is_ads", false)) continue;
+                    string title, body;
+                    Clean.Hagizra(Json.Str(m, "text"), out title, out body);
+                    string imgs = string.Join("\n", Clean.Images(Json.Str(m, "text")).ToArray());
+                    if (title.Length == 0 && body.Length == 0 && imgs.Length == 0) continue;
+                    list.Add(new Item { Id = "h" + id, Src = "hagizra", Sub = "", Title = title, Text = body, Time = time > 0 ? time : NowMs(), Img = imgs });
+                }
+                if (older || min == long.MaxValue || (offset > 0 && min >= offset)) break;
+                offset = min;   // העמוד הבא: הודעות ישנות מהישנה ביותר כאן
+            }
+            return list;
+        }
+
+        List<Item> BackfillAuthenti(string channel, long cutoff)
+        {
+            var list = new List<Item>();
+            long before = 0;
+            string src = Uri.EscapeDataString(channel);
+            for (int page = 0; page < 40; page++)
+            {
+                string url = "https://authenti.newsupdates.click/api/get_messages_optimized.php?source=" + src +
+                    (before > 0 ? "&before_id=" + before : "&last_id=0") + "&limit=50";
+                var root = Json.Obj(Json.Parse(Http(url)));
+                var msgs = Json.Arr(root == null ? null : (root.ContainsKey("messages") ? root["messages"] : null));
+                if (msgs == null || msgs.Length == 0) break;
+                bool older = false;
+                long min = long.MaxValue;
+                foreach (var o in msgs)
+                {
+                    var m = Json.Obj(o); if (m == null) continue;
+                    long id = Json.Long(m, "id");
+                    if (id < min) min = id;
+                    long time = 0;
+                    DateTime ts;
+                    if (DateTime.TryParseExact(Json.Str(m, "created_at"), "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out ts))
+                        time = (long)(ts.ToUniversalTime() - new DateTime(1970, 1, 1)).TotalMilliseconds;
+                    if (time > 0 && time < cutoff) { older = true; continue; }
+                    if (Json.Bool(m, "admin_only", false)) continue;
+                    string text = Clean.Plain(Json.Str(m, "description"));
+                    string aimg = Json.Str(m, "image_url");
+                    if (text.Length == 0 && aimg.Length == 0) continue;
+                    list.Add(new Item { Id = "a" + id, Src = "authenti", Sub = Json.Str(m, "source"), Title = "", Text = text, Time = time > 0 ? time : NowMs(), Img = aimg });
+                }
+                if (older || min == long.MaxValue || (before > 0 && min >= before)) break;
+                before = min;
+            }
+            return list;
+        }
+
+        List<Item> BackfillPc(string appId, long cutoff)
+        {
+            // התראות Windows נשמרות רק כל עוד הן במרכז ההודעות — שולחים את מה שיש שם מהתוכנה הזו
+            var list = new List<Item>();
+            string tmp = Path.Combine(Path.GetTempPath(), "Pushim-wpn-bf");
+            Directory.CreateDirectory(tmp);
+            string src = Path.Combine(WpnDir, "wpndatabase.db");
+            string dst = Path.Combine(tmp, "wpn.db");
+            foreach (var ext in new[] { "", "-wal", "-shm", "-journal" })
+                if (File.Exists(dst + ext)) File.Delete(dst + ext);
+            File.Copy(src, dst, true);
+            if (File.Exists(src + "-wal")) File.Copy(src + "-wal", dst + "-wal", true);
+            IntPtr db;
+            if (Sqlite.sqlite3_open16(dst, out db) != 0) { Sqlite.sqlite3_close(db); throw new Exception("לא ניתן לפתוח את מסד ההתראות"); }
+            try
+            {
+                IntPtr st;
+                string sql = "SELECT n.Id, h.PrimaryId, n.Payload, n.ArrivalTime FROM Notification n JOIN NotificationHandler h ON h.RecordId = n.HandlerId WHERE n.Type = 'toast' ORDER BY n.[Order]";
+                if (Sqlite.sqlite3_prepare16_v2(db, sql, -1, out st, IntPtr.Zero) != 0) throw new Exception("שאילתה נכשלה");
+                try
+                {
+                    while (Sqlite.sqlite3_step(st) == Sqlite.ROW)
+                    {
+                        string app = Sqlite.Text(st, 1);
+                        string name;
+                        lock (stLock) name = St.Apps.ContainsKey(app) ? St.Apps[app] : app;
+                        if (!string.Equals(app, appId, StringComparison.OrdinalIgnoreCase) && name != appId) continue;
+                        long ft = Sqlite.sqlite3_column_int64(st, 3);
+                        long time = ft > 116444736000000000L ? (ft - 116444736000000000L) / 10000 : NowMs();
+                        if (time < cutoff) continue;
+                        string title, body;
+                        Clean.Toast(Sqlite.Blob(st, 2), out title, out body);
+                        if (title.Length == 0 && body.Length == 0) continue;
+                        long id = Sqlite.sqlite3_column_int64(st, 0);
+                        list.Add(new Item { Id = "w" + id + "_" + (time / 1000), Src = "pc", Sub = name, Title = title, Text = body, Time = time, Icon = app });
+                    }
+                }
+                finally { Sqlite.sqlite3_finalize(st); }
+            }
+            finally { Sqlite.sqlite3_close(db); }
+            return list;
         }
 
         void ReadNotifications(string tmp, ref long lastOrder, HashSet<long> seen)
@@ -1107,6 +1364,64 @@ namespace Pushim
         }
     }
 
+    // ---------------------------------------------------------------- הקטנת תמונות
+
+    static class ImageTools
+    {
+        /// <summary>
+        /// ממיר כל תמונה (JPG/PNG/GIF/WebP — דרך רכיבי הפענוח של Windows) ל-JPEG מוקטן,
+        /// שהצלע הארוכה שלו לכל היותר maxSide, על רקע לבן.
+        /// </summary>
+        public static byte[] ToJpeg(byte[] raw, int maxSide, int quality)
+        {
+            byte[] result = null;
+            Exception error = null;
+            var t = new Thread(() =>
+            {
+                try { result = Convert(raw, maxSide, quality); }
+                catch (Exception e) { error = e; }
+            });
+            t.SetApartmentState(ApartmentState.STA);
+            t.IsBackground = true;
+            t.Start();
+            t.Join(60000);
+            if (error != null) throw new Exception("לא ניתן לפתוח את התמונה");
+            if (result == null) throw new Exception("עיבוד התמונה לקח יותר מדי זמן");
+            return result;
+        }
+
+        static byte[] Convert(byte[] raw, int maxSide, int quality)
+        {
+            using (var ms = new MemoryStream(raw))
+            {
+                var dec = System.Windows.Media.Imaging.BitmapDecoder.Create(ms,
+                    System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile,
+                    System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                var frame = dec.Frames[0];
+                double w = frame.PixelWidth, h = frame.PixelHeight;
+                double scale = Math.Min(1.0, maxSide / Math.Max(w, h));
+                int ow = Math.Max(1, (int)Math.Round(w * scale)), oh = Math.Max(1, (int)Math.Round(h * scale));
+                var dv = new System.Windows.Media.DrawingVisual();
+                using (var dc = dv.RenderOpen())
+                {
+                    var rect = new System.Windows.Rect(0, 0, ow, oh);
+                    dc.DrawRectangle(System.Windows.Media.Brushes.White, null, rect);
+                    dc.DrawImage(frame, rect);
+                }
+                System.Windows.Media.RenderOptions.SetBitmapScalingMode(dv, System.Windows.Media.BitmapScalingMode.HighQuality);
+                var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(ow, oh, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                rtb.Render(dv);
+                var enc = new System.Windows.Media.Imaging.JpegBitmapEncoder { QualityLevel = quality };
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+                using (var outMs = new MemoryStream())
+                {
+                    enc.Save(outMs);
+                    return outMs.ToArray();
+                }
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- ניקוי טקסט
 
     static class Clean
@@ -1118,6 +1433,16 @@ namespace Pushim
         static readonly Regex Tags = new Regex(@"<[^>]+>");
         static readonly Regex Spaces = new Regex(@"[ \t]+");
         static readonly Regex Blank = new Regex(@"\n{3,}");
+
+        static readonly Regex ImageEmbed = new Regex(@"\[image-embedded#[^\]]*\]\(([^)#\s]+)", RegexOptions.IgnoreCase);
+
+        /// <summary>כתובות התמונות שמוטמעות בהודעה של הגיזרה (בלי סרטונים).</summary>
+        public static List<string> Images(string md)
+        {
+            var list = new List<string>();
+            foreach (Match m in ImageEmbed.Matches(md ?? "")) if (!list.Contains(m.Groups[1].Value)) list.Add(m.Groups[1].Value);
+            return list;
+        }
 
         public static void Hagizra(string md, out string title, out string body)
         {

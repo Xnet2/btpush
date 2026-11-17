@@ -34,6 +34,22 @@ final class Prefs {
     static int interval(Context c) { return sp(c).getInt("interval", 15); }
     static void setInterval(Context c, int s) { sp(c).edit().putInt("interval", s).apply(); }
 
+    // ---- פושים: מתג כללי + השתקה לכל ערוץ, וזמן הקריאה האחרון של כל ערוץ
+
+    static boolean pushes(Context c) { return sp(c).getBoolean("pushes", true); }
+    static void setPushes(Context c, boolean on) { sp(c).edit().putBoolean("pushes", on).apply(); }
+
+    static SharedPreferences chats(Context c) { return c.getSharedPreferences("chats", Context.MODE_PRIVATE); }
+    static boolean muted(Context c, String chat) { return chats(c).getBoolean("mute:" + chat, false); }
+    static void setMuted(Context c, String chat, boolean m) { chats(c).edit().putBoolean("mute:" + chat, m).apply(); }
+    static long lastRead(Context c, String chat) { return chats(c).getLong("read:" + chat, 0); }
+    static void markRead(Context c, String chat) { chats(c).edit().putLong("read:" + chat, System.currentTimeMillis()).apply(); }
+
+    /** האם להקפיץ פוש על הפריט הזה. */
+    static boolean shouldPush(Context c, Item it) {
+        return pushes(c) && !muted(c, it.chat()) && !it.chat().equals(ChannelActivity.openChat);
+    }
+
     static boolean sound(Context c) { return sp(c).getBoolean("sound", true); }
     static void setSound(Context c, boolean on) { sp(c).edit().putBoolean("sound", on).apply(); }
 

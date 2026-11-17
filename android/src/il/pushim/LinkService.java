@@ -126,11 +126,61 @@ public final class LinkService extends Service {
         });
     }
 
+    /** רענון המסך מקובץ: כשמגיעים הרבה עדכונים ברצף (שאיבה) המסך מתרענן פעם אחת. */
+    private final Runnable notifyItems = () -> {
+        Listener l = listener;
+        if (l != null) l.onItemsChanged();
+    };
+
     private void itemsChanged() {
-        main.post(() -> {
-            Listener l = listener;
-            if (l != null) l.onItemsChanged();
-        });
+        main.removeCallbacks(notifyItems);
+        main.postDelayed(notifyItems, 250);
+    }
+
+    // ---------------------------------------------------------------- תמונות
+
+    interface ImageCallback { void failed(String id, String error); }
+    static volatile ImageCallback imageCallback;
+
+    /** מבקש מהמחשב את התמונות של הפריט שעוד לא נטענו. false אם המחשב לא מחובר. */
+    static boolean requestImages(Context c, Item it) {
+        LinkService s = self;
+        if (s == null || state != CONNECTED) return false;
+        String[] urls = it.imgUrls();
+        for (int i = 0; i < urls.length; i++) {
+            if (Images.has(c, it.id, i) || Images.isLoading(it.id, i)) continue;
+            try {
+                JSONObject o = new JSONObject();
+                o.put("t", "image");
+                o.put("id", it.id);
+                o.put("idx", i);
+                o.put("url", urls[i]);
+                Images.loading.add(it.id + "#" + i);
+                s.send(o.toString());
+            } catch (Exception ignored) { }
+        }
+        return true;
+    }
+
+    // ---------------------------------------------------------------- שאיבה
+
+    interface BackfillCallback { void done(String chat, int count, String error); }
+    static volatile BackfillCallback backfillCallback;
+
+    /** מבקש מהמחשב לשלוח את העדכונים של ערוץ מ-hours שעות אחרונות. false אם המחשב לא מחובר. */
+    static boolean requestBackfill(String chat, int hours) {
+        LinkService s = self;
+        if (s == null || state != CONNECTED) return false;
+        try {
+            JSONObject o = new JSONObject();
+            o.put("t", "backfill");
+            o.put("chat", chat);
+            o.put("hours", hours);
+            s.send(o.toString());
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ---------------------------------------------------------------- בלוטות'
@@ -204,6 +254,7 @@ public final class LinkService extends Service {
             if (conn == s) {
                 conn = null;
                 out = null;
+                if (!Images.loading.isEmpty()) { Images.loading.clear(); itemsChanged(); }
                 BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
                 setState(a != null && a.isEnabled() ? WAITING : OFF);
             }
@@ -215,15 +266,26 @@ public final class LinkService extends Service {
         switch (t) {
             case "item": {
                 Item it = Item.from(o);
+                int bl = o.optInt("bl", 0);
+                if (bl == 2) {
+                    // עדכון ישן משאיבה: נשמר בשקט, בלי פוש
+                    if (it.id.length() > 0 && Store.get(this).add(it, true)) itemsChanged();
+                    return;
+                }
                 if (it.id.length() == 0 || !Prefs.wanted(this, it)) return;
                 if (!Store.get(this).add(it)) return;
-                boolean isBacklog = o.optInt("bl", 0) == 1;
-                if (isBacklog) {
-                    backlog++;
-                    main.removeCallbacks(backlogDone);
-                    main.postDelayed(backlogDone, 1500);
-                } else {
-                    Notifier.post(this, it);
+                // העדכון תמיד נשמר בערוץ; פוש רק אם הפושים פעילים והערוץ לא מושתק
+                if (Prefs.shouldPush(this, it)) {
+                    boolean isBacklog = o.optInt("bl", 0) == 1;
+                    if (isBacklog) {
+                        backlog++;
+                        main.removeCallbacks(backlogDone);
+                        main.postDelayed(backlogDone, 1500);
+                    } else {
+                        Notifier.post(this, it);
+                    }
+                } else if (it.chat().equals(ChannelActivity.openChat)) {
+                    Prefs.markRead(this, it.chat());
                 }
                 itemsChanged();
                 break;
@@ -254,6 +316,36 @@ public final class LinkService extends Service {
             case "ping":
                 send("{\"t\":\"pong\"}");
                 break;
+            case "image_data": {
+                String id = o.optString("id");
+                int idx = o.optInt("idx", 0);
+                try { Images.save(this, id, idx, o.optString("data")); } catch (Exception ignored) { }
+                Images.loading.remove(id + "#" + idx);
+                itemsChanged();
+                break;
+            }
+            case "image_error": {
+                String id = o.optString("id");
+                int idx = o.optInt("idx", 0);
+                String err = o.optString("error", "");
+                Images.loading.remove(id + "#" + idx);
+                main.post(() -> {
+                    ImageCallback cb = imageCallback;
+                    if (cb != null) cb.failed(id, err);
+                });
+                itemsChanged();
+                break;
+            }
+            case "backfill_done": {
+                String chat = o.optString("chat");
+                int count = o.optInt("count", 0);
+                String err = o.has("error") ? o.optString("error") : null;
+                main.postDelayed(() -> {
+                    BackfillCallback cb = backfillCallback;
+                    if (cb != null) cb.done(chat, count, err);
+                }, 300);
+                break;
+            }
             default:
                 break;
         }

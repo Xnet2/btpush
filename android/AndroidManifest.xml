@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="il.pushim.player"
-    android:versionCode="4"
-    android:versionName="1.3">
+    android:versionCode="9"
+    android:versionName="1.6.1">
 
     <uses-sdk android:minSdkVersion="19" android:targetSdkVersion="28" />
 
@@ -31,6 +31,7 @@
         </activity>
 
         <activity android:name="il.pushim.SettingsActivity" android:exported="false" />
+        <activity android:name="il.pushim.ChannelActivity" android:exported="false" />
 
         <service android:name="il.pushim.LinkService" android:exported="false" />
 

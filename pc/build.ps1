@@ -31,6 +31,7 @@ $bw.Close()
 
 & $csc /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 "/win32icon:$ico" "/out:$out" `
   "/r:$fw\System.Web.Extensions.dll" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Xml.dll `
-  /r:System.Core.dll /r:Microsoft.CSharp.dll (Join-Path $PSScriptRoot 'Pushim.cs')
+  /r:System.Core.dll /r:Microsoft.CSharp.dll "/r:$fw\WPF\PresentationCore.dll" "/r:$fw\WPF\WindowsBase.dll" "/r:$fw\System.Xaml.dll" `
+  (Join-Path $PSScriptRoot 'Pushim.cs')
 if ($LASTEXITCODE) { throw 'csc' }
 (Get-Item $out).Length

@@ -49,6 +49,27 @@ final class Notifier {
         return PendingIntent.getActivity(c, 0, i, flags);
     }
 
+    /** לחיצה על פוש פותחת את הערוץ שלו (וחזרה מובילה לרשימת הערוצים). */
+    private static PendingIntent openChat(Context c, String chat) {
+        Intent list = new Intent(c, MainActivity.class);
+        list.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent ch = new Intent(c, ChannelActivity.class);
+        ch.putExtra("chat", chat);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getActivities(c, chat.hashCode(), new Intent[]{list, ch}, flags);
+    }
+
+    private static final java.util.Map<String, java.util.List<Integer>> idsByChat = new java.util.HashMap<>();
+
+    /** כשפותחים ערוץ — מנקים את הפושים שלו משורת ההתראות. */
+    static synchronized void cancelChat(Context c, String chat) {
+        java.util.List<Integer> ids = idsByChat.remove(chat);
+        if (ids == null) return;
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        for (int id : ids) nm.cancel(id);
+    }
+
     @SuppressWarnings("deprecation")
     private static Notification.Builder builder(Context c, String channel) {
         return Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, channel) : new Notification.Builder(c);
@@ -75,7 +96,7 @@ final class Notifier {
     }
 
     @SuppressWarnings("deprecation")
-    static void post(Context c, Item it) {
+    static synchronized void post(Context c, Item it) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         String title = it.pushTitle(), text = it.pushText();
         Notification.Builder b = builder(c, channelId(c))
@@ -87,7 +108,7 @@ final class Notifier {
                 .setWhen(it.time)
                 .setShowWhen(true)
                 .setAutoCancel(true)
-                .setContentIntent(openApp(c))
+                .setContentIntent(openChat(c, it.chat()))
                 .setPriority(Notification.PRIORITY_HIGH);
         try {
             int size = c.getResources().getDimensionPixelSize(android.R.dimen.notification_large_icon_width);
@@ -104,8 +125,12 @@ final class Notifier {
             if (Prefs.vibrate(c)) d |= Notification.DEFAULT_VIBRATE;
             b.setDefaults(d);
         }
-        nm.notify(nextId++, b.build());
+        int id = nextId++;
         if (nextId > 100000) nextId = 100;
+        nm.notify(id, b.build());
+        java.util.List<Integer> ids = idsByChat.get(it.chat());
+        if (ids == null) { ids = new java.util.ArrayList<>(); idsByChat.put(it.chat(), ids); }
+        ids.add(id);
     }
 
     /** כשמגיעים הרבה פריטים בבת אחת (אחרי ניתוק) — פוש אחד מסכם. */
@@ -114,8 +139,8 @@ final class Notifier {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         Notification.Builder b = builder(c, channelId(c))
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentTitle("התקבלו " + count + " פריטים חדשים")
-                .setContentText("פריטים שהצטברו בזמן שהנגן לא היה מחובר")
+                .setContentTitle(count + " עדכונים חדשים")
+                .setContentText("עדכונים שהצטברו בזמן שהנגן לא היה מחובר")
                 .setAutoCancel(true)
                 .setContentIntent(openApp(c))
                 .setPriority(Notification.PRIORITY_HIGH);
