@@ -56,7 +56,7 @@ public final class MainActivity extends Activity implements LinkService.Listener
         LinearLayout header = Ui.row(this);
         header.setPadding(dp(20), dp(18), dp(16), dp(8));
         LinearLayout titles = Ui.col(this);
-        TextView title = Ui.text(this, "פושים", 28, Ui.TEXT, true);
+        TextView title = Ui.text(this, "מבזק", 28, Ui.TEXT, true);
         titles.addView(title);
         statusPill = Ui.row(this);
         statusPill.setPadding(dp(10), dp(5), dp(12), dp(5));
@@ -120,7 +120,7 @@ public final class MainActivity extends Activity implements LinkService.Listener
         bell.setImageResource(il.pushim.player.R.drawable.icon);
         bell.setAlpha(0.9f);
         empty.addView(bell, Ui.lp(dp(76), dp(76)));
-        TextView e1 = Ui.text(this, "עדיין אין פושים", 18, Ui.TEXT, true);
+        TextView e1 = Ui.text(this, "עדיין אין עדכונים", 18, Ui.TEXT, true);
         e1.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams el = Ui.lp(-2, -2);
         el.topMargin = dp(10);
@@ -367,7 +367,7 @@ public final class MainActivity extends Activity implements LinkService.Listener
         if (it == null) return;
         String s = (it.title != null && it.title.length() > 0 ? it.title + "\n" : "") + (it.text == null ? "" : it.text);
         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        cm.setPrimaryClip(ClipData.newPlainText("פוש", s.trim()));
+        cm.setPrimaryClip(ClipData.newPlainText("מבזק", s.trim()));
         Toast.makeText(this, "הטקסט הועתק", Toast.LENGTH_SHORT).show();
     }
 }

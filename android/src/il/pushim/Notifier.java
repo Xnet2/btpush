@@ -27,7 +27,7 @@ final class Notifier {
         NotificationChannel link = new NotificationChannel("link", "חיבור למחשב", NotificationManager.IMPORTANCE_MIN);
         link.setShowBadge(false);
         nm.createNotificationChannel(link);
-        String[][] all = {{"push_sv", "פושים"}, {"push_s", "פושים (בלי רטט)"}, {"push_v", "פושים (רטט בלבד)"}, {"push_q", "פושים (שקט)"}};
+        String[][] all = {{"push_sv", "מבזקים"}, {"push_s", "מבזקים (בלי רטט)"}, {"push_v", "מבזקים (רטט בלבד)"}, {"push_q", "מבזקים (שקט)"}};
         for (String[] ch : all) {
             NotificationChannel n = new NotificationChannel(ch[0], ch[1], NotificationManager.IMPORTANCE_HIGH);
             boolean sound = ch[0].equals("push_sv") || ch[0].equals("push_s");
@@ -59,7 +59,7 @@ final class Notifier {
     static Notification ongoing(Context c, String text) {
         Notification.Builder b = builder(c, "link")
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentTitle("פושים")
+                .setContentTitle("מבזק")
                 .setContentText(text)
                 .setOngoing(true)
                 .setShowWhen(false)

@@ -84,13 +84,13 @@ public final class SettingsActivity extends Activity {
         countValue = valueRow(keep, "מחיקת כל הפריטים", v -> confirmClear());
 
         // ---- התראות
-        section("פושים");
+        section("התראות");
         LinearLayout pn = card();
         toggleRow(pn, "צליל", null, 0, Prefs.sound(this), on -> Prefs.setSound(this, on));
         divider(pn);
         toggleRow(pn, "רטט", null, 0, Prefs.vibrate(this), on -> Prefs.setVibrate(this, on));
         divider(pn);
-        valueRow(pn, "שליחת פוש בדיקה מהמחשב", v -> {
+        valueRow(pn, "שליחת התראת בדיקה מהמחשב", v -> {
             if (LinkService.state != LinkService.CONNECTED) {
                 Toast.makeText(this, "המחשב לא מחובר כרגע", Toast.LENGTH_SHORT).show();
             } else {
@@ -107,14 +107,14 @@ public final class SettingsActivity extends Activity {
         TextView help = Ui.text(this,
                 "1. מפעילים בלוטות' בנגן ובמחשב.\n" +
                 "2. במחשב: הגדרות ← Bluetooth ומכשירים ← הוספת מכשיר, ובוחרים את הנגן (אם הנגן לא מופיע, לוחצים כאן למעלה על \"להפוך את הנגן לגלוי\").\n" +
-                "3. מפעילים במחשב את התוכנה \"פושים\". היא מוצאת את הנגן לבד ומתחברת אליו.\n" +
-                "4. האפליקציה הזו לא צריכה להיות פתוחה. היא מקבלת פושים גם כשהיא סגורה.",
+                "3. מפעילים במחשב את התוכנה \"מבזק\". היא מוצאת את הנגן לבד ומתחברת אליו.\n" +
+                "4. האפליקציה הזו לא צריכה להיות פתוחה. היא מקבלת התראות גם כשהיא סגורה.",
                 14, Ui.TEXT2, false);
         help.setLineSpacing(0, 1.25f);
         help.setPadding(dp(16), dp(12), dp(16), dp(14));
         conn.addView(help, Ui.lp(-1, -2));
 
-        TextView ver = Ui.text(this, "פושים · גרסה 1.1", 12, Ui.GRAY, false);
+        TextView ver = Ui.text(this, "מבזק · גרסה 1.2", 12, Ui.GRAY, false);
         ver.setGravity(Gravity.CENTER);
         ver.setPadding(0, dp(18), 0, 0);
         content.addView(ver, Ui.lp(-1, -2));

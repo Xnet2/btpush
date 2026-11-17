@@ -4,7 +4,7 @@
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">#FFF4F6FB</item>
         <item name="android:navigationBarColor">#FFFFFFFF</item>
-        <item name="android:colorAccent">#FF5B5BF6</item>
-        <item name="android:colorPrimary">#FF5B5BF6</item>
+        <item name="android:colorAccent">#FF4F46E5</item>
+        <item name="android:colorPrimary">#FF4F46E5</item>
     </style>
 </resources>

@@ -1,4 +1,4 @@
-# בונה את Pushim.apk עם ה-JDK וה-Android SDK שכבר מותקנים במחשב (%LOCALAPPDATA%\VODOS-build).
+# בונה את Mivzak.apk עם ה-JDK וה-Android SDK שכבר מותקנים במחשב (%LOCALAPPDATA%\VODOS-build).
 $ErrorActionPreference = 'Stop'
 # aapt2 לא מסתדר עם אותיות עבריות בנתיב: מעתיקים את המקורות לתיקייה תחת VODOS-build ועובדים עם נתיבים קצרים (8.3).
 $fso = New-Object -ComObject Scripting.FileSystemObject
@@ -20,53 +20,10 @@ $pass = 'lockscreen123'
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$out\classes", "$out\dex", "$root\res\drawable-xxxhdpi" | Out-Null
 
-# ---- אייקונים: פעמון לבן על ריבוע מעוגל סגול, ואייקון לבן לשורת ההתראות
-Add-Type -AssemblyName System.Drawing
-function Add-Bell($g, [float]$s, $brush) {
-  $b = New-Object Drawing.Drawing2D.GraphicsPath
-  $b.AddArc($s * 0.30, $s * 0.22, $s * 0.40, $s * 0.40, 180, 180)
-  $b.AddLine($s * 0.70, $s * 0.42, $s * 0.70, $s * 0.58)
-  $b.AddLine($s * 0.70, $s * 0.58, $s * 0.79, $s * 0.70)
-  $b.AddLine($s * 0.79, $s * 0.70, $s * 0.21, $s * 0.70)
-  $b.AddLine($s * 0.21, $s * 0.70, $s * 0.30, $s * 0.58)
-  $b.CloseFigure()
-  $g.FillPath($brush, $b)
-  $g.FillEllipse($brush, $s * 0.42, $s * 0.72, $s * 0.16, $s * 0.12)
-  $g.FillEllipse($brush, $s * 0.46, $s * 0.15, $s * 0.08, $s * 0.09)
-}
-$s = 192
-$bmp = New-Object Drawing.Bitmap $s, $s
-$g = [Drawing.Graphics]::FromImage($bmp)
-$g.SmoothingMode = 'AntiAlias'
-$g.Clear([Drawing.Color]::Transparent)
-$m = 8
-$rect = New-Object Drawing.RectangleF $m, $m, ($s - 2 * $m), ($s - 2 * $m)
-$br = New-Object Drawing.Drawing2D.LinearGradientBrush $rect, ([Drawing.Color]::FromArgb(91, 91, 246)), ([Drawing.Color]::FromArgb(139, 92, 246)), 45
-$p = New-Object Drawing.Drawing2D.GraphicsPath
-$d = 84
-$p.AddArc($m, $m, $d, $d, 180, 90); $p.AddArc($s - $m - $d, $m, $d, $d, 270, 90)
-$p.AddArc($s - $m - $d, $s - $m - $d, $d, $d, 0, 90); $p.AddArc($m, $s - $m - $d, $d, $d, 90, 90); $p.CloseFigure()
-$g.FillPath($br, $p)
-$g.TranslateTransform(8, 10)
-$g.ScaleTransform(0.92, 0.92)
-Add-Bell $g 192 ([Drawing.Brushes]::White)
-$g.ResetTransform()
-# נקודה כתומה-אדומה של "פוש חדש"
-$g.FillEllipse((New-Object Drawing.SolidBrush ([Drawing.Color]::FromArgb(255, 94, 87))), 120, 34, 38, 38)
-$g.DrawEllipse((New-Object Drawing.Pen ([Drawing.Color]::White), 6), 120, 34, 38, 38)
-$bmp.Save("$root\res\drawable-xxxhdpi\icon.png", [Drawing.Imaging.ImageFormat]::Png)
-$g.Dispose(); $bmp.Dispose()
-
-$s = 96
-$bmp = New-Object Drawing.Bitmap $s, $s
-$g = [Drawing.Graphics]::FromImage($bmp)
-$g.SmoothingMode = 'AntiAlias'
-$g.Clear([Drawing.Color]::Transparent)
-$g.TranslateTransform(-14, -10)
-$g.ScaleTransform(1.3, 1.3)
-Add-Bell $g 96 ([Drawing.Brushes]::White)
-$bmp.Save("$root\res\drawable-xxxhdpi\ic_stat.png", [Drawing.Imaging.ImageFormat]::Png)
-$g.Dispose(); $bmp.Dispose()
+# ---- אייקונים: הלוגו של מבזק (store\logo.ps1), ואייקון לבן לשורת ההתראות
+. (Join-Path $PSScriptRoot '..\store\logo.ps1')
+Save-Png (New-MivzakLogo 192 -Padding 0.04) "$root\res\drawable-xxxhdpi\icon.png"
+Save-Png (New-MivzakLogo 96 -Mono -Padding 0.02) "$root\res\drawable-xxxhdpi\ic_stat.png"
 Copy-Item "$root\res\drawable-xxxhdpi\icon.png" "$PSScriptRoot\icon.png" -Force
 
 # ---- בנייה
@@ -89,8 +46,8 @@ if ($LASTEXITCODE) { throw 'd8' }
 if ($LASTEXITCODE) { throw 'jar' }
 & "$bt\zipalign.exe" -f 4 "$out\base.apk" "$out\aligned.apk"
 if ($LASTEXITCODE) { throw 'zipalign' }
-& "$bt\apksigner.bat" sign --ks $keystore --ks-pass "pass:$pass" --min-sdk-version 19 --v1-signing-enabled true --v2-signing-enabled true --out "$out\Pushim.apk" "$out\aligned.apk"
+& "$bt\apksigner.bat" sign --ks $keystore --ks-pass "pass:$pass" --min-sdk-version 19 --v1-signing-enabled true --v2-signing-enabled true --out "$out\Mivzak.apk" "$out\aligned.apk"
 if ($LASTEXITCODE) { throw 'apksigner' }
-& "$bt\aapt2.exe" dump badging "$out\Pushim.apk" | Select-Object -First 3
-Copy-Item "$out\Pushim.apk" "$PSScriptRoot\Pushim.apk" -Force
-(Get-Item "$PSScriptRoot\Pushim.apk").Length
+& "$bt\aapt2.exe" dump badging "$out\Mivzak.apk" | Select-Object -First 3
+Copy-Item "$out\Mivzak.apk" "$PSScriptRoot\Mivzak.apk" -Force
+(Get-Item "$PSScriptRoot\Mivzak.apk").Length

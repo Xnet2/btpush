@@ -21,7 +21,7 @@ final class Ui {
     static final int TEXT2 = 0xFF3D4456;
     static final int SUB = 0xFF6B7385;
     static final int LINE = 0xFFE9ECF3;
-    static final int ACCENT = 0xFF5B5BF6;
+    static final int ACCENT = 0xFF4F46E5;
     static final int GREEN = 0xFF22C55E;
     static final int AMBER = 0xFFF59E0B;
     static final int GRAY = 0xFFA0A7B6;
