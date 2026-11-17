@@ -3,3 +3,7 @@
 *.ico
 *.idsig
 *.zip
+*.png
+!store/icon.png
+!android/icon.png
+!android/res/**/*.png

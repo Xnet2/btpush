@@ -1,16 +1,16 @@
-# בונה את Mivzak.exe עם המהדר של ‎.NET Framework שמגיע עם Windows.
-param([string]$Out = (Join-Path $PSScriptRoot 'Mivzak.exe'))
+# בונה את BTPush.exe עם המהדר של ‎.NET Framework שמגיע עם Windows.
+param([string]$Out = (Join-Path $PSScriptRoot 'BTPush.exe'))
 $ErrorActionPreference = 'Stop'
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 $fw = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
 $out = $Out
-$ico = Join-Path $env:TEMP 'Mivzak.ico'
+$ico = Join-Path $env:TEMP 'BTPush.ico'
 
-# אייקון: הלוגו של מבזק (store\logo.ps1), נשמר כ-ICO עם תמונות PNG בכמה גדלים.
+# אייקון: הלוגו של ביטיפוש (store\logo.ps1), נשמר כ-ICO עם תמונות PNG בכמה גדלים.
 . (Join-Path $PSScriptRoot '..\store\logo.ps1')
 $sizes = 16, 24, 32, 48, 256
 $pngs = foreach ($s in $sizes) {
-  $bmp = New-MivzakLogo $s
+  $bmp = New-BTPushLogo $s
   $ms = New-Object IO.MemoryStream
   $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
   $bmp.Dispose()

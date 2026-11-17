@@ -61,7 +61,7 @@ public final class SettingsActivity extends Activity {
         toggleRow(src, "הגיזרה", "ידיעות מ-hagizra.news", Item.color("hagizra"),
                 Prefs.src(this, "hagizra"), on -> { Prefs.setSrc(this, "hagizra", on); changed(); });
         divider(src);
-        toggleRow(src, "אותנטי", "מבזקים מ-authenti.newsupdates.click", Item.color("authenti"),
+        toggleRow(src, "אותנטי", "ביטיפושים מ-authenti.newsupdates.click", Item.color("authenti"),
                 Prefs.src(this, "authenti"), on -> { Prefs.setSrc(this, "authenti", on); changed(); });
         channelsValue = valueRow(src, "בחירת ערוצים באותנטי", v -> chooseChannels());
         divider(src);
@@ -107,14 +107,14 @@ public final class SettingsActivity extends Activity {
         TextView help = Ui.text(this,
                 "1. מפעילים בלוטות' בנגן ובמחשב.\n" +
                 "2. במחשב: הגדרות ← Bluetooth ומכשירים ← הוספת מכשיר, ובוחרים את הנגן (אם הנגן לא מופיע, לוחצים כאן למעלה על \"להפוך את הנגן לגלוי\").\n" +
-                "3. מפעילים במחשב את התוכנה \"מבזק\". היא מוצאת את הנגן לבד ומתחברת אליו.\n" +
+                "3. מפעילים במחשב את התוכנה \"ביטיפוש\". היא מוצאת את הנגן לבד ומתחברת אליו.\n" +
                 "4. האפליקציה הזו לא צריכה להיות פתוחה. היא מקבלת התראות גם כשהיא סגורה.",
                 14, Ui.TEXT2, false);
         help.setLineSpacing(0, 1.25f);
         help.setPadding(dp(16), dp(12), dp(16), dp(14));
         conn.addView(help, Ui.lp(-1, -2));
 
-        TextView ver = Ui.text(this, "מבזק · גרסה 1.2", 12, Ui.GRAY, false);
+        TextView ver = Ui.text(this, "ביטיפוש · גרסה 1.3", 12, Ui.GRAY, false);
         ver.setGravity(Gravity.CENTER);
         ver.setPadding(0, dp(18), 0, 0);
         content.addView(ver, Ui.lp(-1, -2));

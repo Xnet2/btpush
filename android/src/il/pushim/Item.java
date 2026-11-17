@@ -27,7 +27,7 @@ final class Item {
     }
 
     static int color(String src) {
-        if ("hagizra".equals(src)) return 0xFFE5484D;
+        if ("hagizra".equals(src)) return 0xFFC62F3B;
         if ("authenti".equals(src)) return 0xFF2F7CF6;
         return 0xFF8B5CF6;
     }

@@ -1,4 +1,4 @@
-// "מבזק" — תוכנת המחשב.
+// "ביטיפוש" — תוכנת המחשב.
 // מושכת ידיעות מ"הגיזרה" ומ"אותנטי", קוראת את התראות Windows, ושולחת כל פריט לנגן בבלוטות' (RFCOMM).
 // ההגדרות (אילו מקורות, אילו תוכנות וערוצים, תדירות) נקבעות בנגן ומגיעות לכאן בחיבור.
 // נבנה עם csc של ‎.NET Framework 4 (C# 5), בלי ספריות חיצוניות.
@@ -20,17 +20,17 @@ using System.Windows.Forms;
 using System.Xml;
 using Microsoft.Win32;
 
-[assembly: System.Reflection.AssemblyTitle("מבזק")]
-[assembly: System.Reflection.AssemblyProduct("מבזק")]
-[assembly: System.Reflection.AssemblyVersion("1.2.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.2.0.0")]
+[assembly: System.Reflection.AssemblyTitle("ביטיפוש")]
+[assembly: System.Reflection.AssemblyProduct("ביטיפוש")]
+[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.3.0.0")]
 
 namespace Pushim
 {
     static class Program
     {
         public static readonly Guid ServiceUuid = new Guid("b3a7c2d4-5e6f-4a1b-9c8d-7e6f5a4b3c21");
-        public const string Version = "1.2";
+        public const string Version = "1.3";
         public static bool TestMode;
 
         [STAThread]
@@ -518,7 +518,7 @@ namespace Pushim
             {
                 Id = "test" + DateTime.UtcNow.Ticks,
                 Src = "pc",
-                Sub = "מבזק",
+                Sub = "ביטיפוש",
                 Title = "התראת בדיקה",
                 Text = "אם רואים את זה בנגן, הכול עובד.",
                 Time = NowMs()
@@ -1185,12 +1185,12 @@ namespace Pushim
         public static readonly Color Text = Color.FromArgb(28, 33, 48);
         public static readonly Color Sub = Color.FromArgb(107, 115, 133);
         public static readonly Color Line = Color.FromArgb(233, 236, 243);
-        public static readonly Color Accent = Color.FromArgb(79, 70, 229);
-        public static readonly Color Accent2 = Color.FromArgb(49, 46, 129);
+        public static readonly Color Accent = Color.FromArgb(240, 86, 106);
+        public static readonly Color Accent2 = Color.FromArgb(255, 176, 138);
         public static readonly Color Green = Color.FromArgb(34, 197, 94);
         public static readonly Color Amber = Color.FromArgb(245, 158, 11);
         public static readonly Color Gray = Color.FromArgb(160, 167, 182);
-        public static readonly Color Hagizra = Color.FromArgb(229, 72, 77);
+        public static readonly Color Hagizra = Color.FromArgb(198, 47, 59);
         public static readonly Color Authenti = Color.FromArgb(47, 124, 246);
         public static readonly Color Pc = Color.FromArgb(139, 92, 246);
 
@@ -1211,7 +1211,7 @@ namespace Pushim
             return p;
         }
 
-        // הלוגו של "מבזק": ברק זהב-כתום על ריבוע מעוגל בכחול-אינדיגו, עם גלי שידור. (זהה ל-store\logo.ps1)
+        // הלוגו של "ביטיפוש": פעמון לבן ישר על ריבוע מעוגל בגרדיאנט אפרסק-קורל. (זהה ל-store\logo.ps1)
         public static Bitmap Logo(int size, Color? dot)
         {
             var bmp = new Bitmap(size, size);
@@ -1221,33 +1221,24 @@ namespace Pushim
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 g.Clear(Color.Transparent);
                 float w = size;
-                var r = new RectangleF(0, 0, w, w);
-                using (var br = new LinearGradientBrush(r, Color.FromArgb(49, 46, 129), Color.FromArgb(79, 70, 229), 45f))
-                using (var p = Round(new RectangleF(0, 0, w - 1, w - 1), w * 0.23f)) g.FillPath(br, p);
-                if (size >= 40)
+                using (var br = new LinearGradientBrush(new RectangleF(0, 0, w, w), Color.FromArgb(255, 176, 138), Color.FromArgb(255, 94, 108), 50f))
+                using (var p = Round(new RectangleF(0, 0, w - 1, w - 1), w * 0.24f)) g.FillPath(br, p);
+                float bx = w * 0.10f, by = w * 0.09f, bs = w * 0.80f;
+                Func<float, float, PointF> P = (u, v) => new PointF(bx + bs * u, by + bs * v);
+                using (var b = new GraphicsPath())
                 {
-                    using (var glow = new GraphicsPath())
-                    {
-                        glow.AddEllipse(w * 0.18f, w * 0.16f, w * 0.64f, w * 0.68f);
-                        using (var pg = new PathGradientBrush(glow))
-                        {
-                            pg.CenterColor = Color.FromArgb(90, 255, 200, 80);
-                            pg.SurroundColors = new[] { Color.FromArgb(0, 255, 200, 80) };
-                            g.FillPath(pg, glow);
-                        }
-                    }
-                    using (var pen = new Pen(Color.FromArgb(150, 255, 255, 255), w * 0.045f))
-                    {
-                        pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round;
-                        foreach (var rr in new[] { 0.13f, 0.22f })
-                            g.DrawArc(pen, w * 0.66f - w * rr, w * 0.30f - w * rr, 2 * w * rr, 2 * w * rr, -70, 70);
-                    }
+                    b.AddBezier(P(0.50f, 0.22f), P(0.64f, 0.22f), P(0.71f, 0.32f), P(0.71f, 0.46f));
+                    b.AddBezier(P(0.71f, 0.46f), P(0.71f, 0.56f), P(0.72f, 0.62f), P(0.79f, 0.68f));
+                    b.AddBezier(P(0.79f, 0.68f), P(0.82f, 0.71f), P(0.81f, 0.74f), P(0.76f, 0.74f));
+                    b.AddLine(P(0.76f, 0.74f), P(0.24f, 0.74f));
+                    b.AddBezier(P(0.24f, 0.74f), P(0.19f, 0.74f), P(0.18f, 0.71f), P(0.21f, 0.68f));
+                    b.AddBezier(P(0.21f, 0.68f), P(0.28f, 0.62f), P(0.29f, 0.56f), P(0.29f, 0.46f));
+                    b.AddBezier(P(0.29f, 0.46f), P(0.29f, 0.32f), P(0.36f, 0.22f), P(0.50f, 0.22f));
+                    b.CloseFigure();
+                    g.FillPath(Brushes.White, b);
                 }
-                float[,] pts = { { 0.52f, 0.13f }, { 0.25f, 0.55f }, { 0.45f, 0.55f }, { 0.38f, 0.88f }, { 0.70f, 0.44f }, { 0.50f, 0.44f }, { 0.60f, 0.13f } };
-                var poly = new PointF[7];
-                for (int i = 0; i < 7; i++) poly[i] = new PointF(w * (pts[i, 0] + 0.03f), w * pts[i, 1]);
-                using (var bb = new LinearGradientBrush(new RectangleF(w * 0.28f, w * 0.13f, w * 0.45f, w * 0.75f), Color.FromArgb(255, 224, 102), Color.FromArgb(255, 146, 43), 90f))
-                    g.FillPolygon(bb, poly);
+                g.FillEllipse(Brushes.White, bx + bs * 0.445f, by + bs * 0.15f, bs * 0.11f, bs * 0.10f);
+                g.FillEllipse(Brushes.White, bx + bs * 0.425f, by + bs * 0.74f, bs * 0.15f, bs * 0.11f);
                 if (dot.HasValue)
                 {
                     float ds = size * 0.38f;
@@ -1331,7 +1322,7 @@ namespace Pushim
             FlatAppearance.BorderColor = Theme.Line;
             BackColor = primary ? Theme.Accent : Theme.Card;
             ForeColor = primary ? Color.White : Theme.Text;
-            FlatAppearance.MouseOverBackColor = primary ? Color.FromArgb(67, 56, 202) : Color.FromArgb(246, 247, 252);
+            FlatAppearance.MouseOverBackColor = primary ? Color.FromArgb(222, 70, 92) : Color.FromArgb(246, 247, 252);
             UseVisualStyleBackColor = false;
         }
     }
@@ -1355,7 +1346,7 @@ namespace Pushim
             SuspendLayout();
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Text = "מבזק";
+            Text = "ביטיפוש";
             RightToLeft = RightToLeft.Yes;
             RightToLeftLayout = true;
             BackColor = Theme.Bg;
@@ -1367,7 +1358,7 @@ namespace Pushim
             using (var b = Theme.Logo(64, null)) Icon = Theme.IconOf(b);
 
             var logo = new PictureBox { Image = Theme.Logo(128, null), Size = new Size(46, 46), Location = new Point(20, 16), BackColor = Theme.Bg, SizeMode = PictureBoxSizeMode.Zoom };
-            var title = new Label { Text = "מבזק", Font = Theme.F(19, true), ForeColor = Theme.Text, AutoSize = true, Location = new Point(74, 8), BackColor = Theme.Bg };
+            var title = new Label { Text = "ביטיפוש", Font = Theme.F(19, true), ForeColor = Theme.Text, AutoSize = true, Location = new Point(74, 8), BackColor = Theme.Bg };
             var sub = new Label { Text = "חדשות והתראות מהמחשב לנגן, בבלוטות'", ForeColor = Theme.Sub, AutoSize = true, Location = new Point(77, 44), BackColor = Theme.Bg };
             Controls.AddRange(new Control[] { logo, title, sub });
 
@@ -1415,7 +1406,7 @@ namespace Pushim
             Put(c3, logBox, 16, 34, 406, 104);
             Controls.Add(c3);
 
-            autoStart.Text = "להפעיל את מבזק אוטומטית עם Windows";
+            autoStart.Text = "להפעיל את ביטיפוש אוטומטית עם Windows";
             autoStart.AutoSize = true;
             autoStart.Location = new Point(20, 566);
             autoStart.ForeColor = Theme.Text; autoStart.BackColor = Theme.Bg;
@@ -1551,7 +1542,7 @@ namespace Pushim
             using (var b = Theme.Logo(32, Theme.Gray)) iconOff = Theme.IconOf(b);
 
             var menu = new ContextMenuStrip { RightToLeft = RightToLeft.Yes, Font = Theme.F(10, false) };
-            statusItem = new ToolStripMenuItem("מבזק") { Enabled = false };
+            statusItem = new ToolStripMenuItem("ביטיפוש") { Enabled = false };
             menu.Items.Add(statusItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("פתיחת החלון", null, (s, e) => ShowForm());
@@ -1560,7 +1551,7 @@ namespace Pushim
             menu.Items.Add("יציאה", null, (s, e) => Exit());
             tray.ContextMenuStrip = menu;
             tray.Icon = iconOff;
-            tray.Text = "מבזק";
+            tray.Text = "ביטיפוש";
             tray.Visible = true;
             tray.DoubleClick += (s, e) => ShowForm();
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowForm(); };
@@ -1573,7 +1564,7 @@ namespace Pushim
             }
             else if (!Program.TestMode && AutoStart.IsOn())
             {
-                AutoStart.Set(true);   // מעדכן את הנתיב, למשל אחרי שהקובץ שונה ל-Mivzak.exe
+                AutoStart.Set(true);   // מעדכן את הנתיב, למשל אחרי שהקובץ שונה ל-BTPush.exe
             }
 
             core.Changed += () => { dirty = true; };
@@ -1595,7 +1586,7 @@ namespace Pushim
             form.CreateControl();
             var h = form.Handle;
             if (showWindow) ShowForm();
-            else tray.ShowBalloonTip(3000, "מבזק", "מבזק רץ ברקע ושולח לנגן. לחיצה על האייקון פותחת את החלון.", ToolTipIcon.Info);
+            else tray.ShowBalloonTip(3000, "ביטיפוש", "ביטיפוש רץ ברקע ושולח לנגן. לחיצה על האייקון פותחת את החלון.", ToolTipIcon.Info);
         }
 
         void Tick()
@@ -1610,7 +1601,7 @@ namespace Pushim
             dirty = false;
             string s = core.Connected ? "מחובר לנגן: " + core.PeerName : "ממתין לנגן";
             statusItem.Text = s;
-            string tip = "מבזק — " + s;
+            string tip = "ביטיפוש — " + s;
             tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip;
             if (form.Visible) form.RefreshView();
         }
