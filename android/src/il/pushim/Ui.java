@@ -1,6 +1,5 @@
 package il.pushim;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -169,10 +168,5 @@ final class Ui {
         v.setBackgroundDrawable(d);
         v.setLayoutParams(lp(dp(c, sizeDp), dp(c, sizeDp)));
         return v;
-    }
-
-    @SuppressWarnings("deprecation")
-    static AlertDialog.Builder dialog(Context c) {
-        return new AlertDialog.Builder(c, AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
     }
 }

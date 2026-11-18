@@ -16,6 +16,8 @@ import java.util.Set;
 final class Images {
     /** תמונות שנשלחה עליהן בקשה ועדיין לא הגיעו ("id#idx"). */
     static final Set<String> loading = Collections.synchronizedSet(new HashSet<String>());
+    /** תמונות שהמחשב לא הצליח להביא (בשאיבה של תמונות לא מנסים אותן שוב). */
+    static final Set<String> failed = Collections.synchronizedSet(new HashSet<String>());
 
     private static final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(12 * 1024 * 1024) {
         @Override

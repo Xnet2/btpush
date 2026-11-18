@@ -107,7 +107,7 @@ public final class SettingsActivity extends Activity {
         divider(menu, 64);
         navRow(menu, Glyph.BT, C_CONN, "חיבור למחשב", CONNECTION).setText("שיוך, בדיקה והוראות");
 
-        TextView ver = Ui.center(Ui.text(this, "גרסה 1.6.1", 13, Ui.TG_GRAY_TEXT, false));
+        TextView ver = Ui.center(Ui.text(this, "גרסה 1.7", 13, Ui.TG_GRAY_TEXT, false));
         ver.setPadding(0, dp(18), 0, 0);
         content.addView(ver, Ui.lp(-1, -2));
     }
@@ -254,25 +254,24 @@ public final class SettingsActivity extends Activity {
             Toast.makeText(this, "הערוצים יופיעו כאן אחרי שיגיעו עדכונים ראשונים", Toast.LENGTH_LONG).show();
             return;
         }
-        String[] names = new String[chats.size()];
+        String[] names = new String[chats.size()], subs = new String[chats.size()];
         boolean[] checked = new boolean[chats.size()];
+        List<View> icons = new java.util.ArrayList<>();
         for (int i = 0; i < chats.size(); i++) {
             Item it = chats.get(i).last;
-            names[i] = it.chatName() + ("hagizra".equals(it.src) ? "" : "  ·  " + it.label());
+            names[i] = it.chatName();
+            subs[i] = "hagizra".equals(it.src) ? "hagizra.news" : it.label();
             checked[i] = !Prefs.muted(this, chats.get(i).key);
+            icons.add(Sheet.avatar(this, it));
         }
-        Ui.dialog(this)
-                .setTitle("פושים מאילו ערוצים?")
-                .setMultiChoiceItems(names, checked, (d, w, on) -> checked[w] = on)
-                .setPositiveButton("שמירה", (d, w) -> {
-                    for (int i = 0; i < chats.size(); i++) Prefs.setMuted(this, chats.get(i).key, !checked[i]);
+        Sheet s = Sheet.create(this, "פושים מאילו ערוצים?", "ערוץ לא מסומן ממשיך לקבל עדכונים, רק בלי פוש.");
+        s.multi(icons, names, subs, checked)
+                .button("שמירה", 1, () -> {
+                    boolean[] st = s.multiState();
+                    for (int i = 0; i < chats.size(); i++) Prefs.setMuted(this, chats.get(i).key, !st[i]);
                     updateValues();
                 })
-                .setNeutralButton("מכולם", (d, w) -> {
-                    for (Store.Chat c : chats) Prefs.setMuted(this, c.key, false);
-                    updateValues();
-                })
-                .setNegativeButton("ביטול", null)
+                .keepOpenButton("סמן הכל", () -> s.setAll(true))
                 .show();
     }
 
@@ -285,23 +284,25 @@ public final class SettingsActivity extends Activity {
         Set<String> off = Prefs.appsOff(this);
         String[] names = new String[apps.size()];
         boolean[] checked = new boolean[apps.size()];
+        List<View> icons = new java.util.ArrayList<>();
         for (int i = 0; i < apps.size(); i++) {
             names[i] = apps.get(i)[1];
             checked[i] = !off.contains(apps.get(i)[0]);
+            icons.add(Sheet.avatar(this, Item.forChat(this, "pc:" + apps.get(i)[0])));
         }
-        Ui.dialog(this)
-                .setTitle("מאילו תוכנות לקבל התראות?")
-                .setMultiChoiceItems(names, checked, (d, w, on) -> checked[w] = on)
-                .setPositiveButton("שמירה", (d, w) -> {
+        Sheet sh = Sheet.create(this, "מאילו תוכנות לקבל התראות?");
+        sh.multi(icons, names, null, checked)
+                .button("שמירה", 1, () -> {
+                    boolean[] st = sh.multiState();
                     Set<String> s = Prefs.appsOff(this);
                     for (int i = 0; i < apps.size(); i++) {
-                        if (checked[i]) s.remove(apps.get(i)[0]);
+                        if (st[i]) s.remove(apps.get(i)[0]);
                         else s.add(apps.get(i)[0]);
                     }
                     Prefs.putSet(this, "apps_off", s);
                     changed();
                 })
-                .setNegativeButton("ביטול", null)
+                .keepOpenButton("סמן הכל", () -> sh.setAll(true))
                 .show();
     }
 
@@ -314,52 +315,46 @@ public final class SettingsActivity extends Activity {
         Set<String> off = Prefs.channelsOff(this);
         String[] names = chs.toArray(new String[0]);
         boolean[] checked = new boolean[names.length];
-        for (int i = 0; i < names.length; i++) checked[i] = !off.contains(names[i]);
-        Ui.dialog(this)
-                .setTitle("מאילו ערוצים באותנטי לקבל?")
-                .setMultiChoiceItems(names, checked, (d, w, on) -> checked[w] = on)
-                .setPositiveButton("שמירה", (d, w) -> {
+        List<View> icons = new java.util.ArrayList<>();
+        for (int i = 0; i < names.length; i++) {
+            checked[i] = !off.contains(names[i]);
+            icons.add(Sheet.avatar(this, Item.forChat(this, "a:" + names[i])));
+        }
+        Sheet sh = Sheet.create(this, "מאילו ערוצים באותנטי לקבל?");
+        sh.multi(icons, names, null, checked)
+                .button("שמירה", 1, () -> {
+                    boolean[] st = sh.multiState();
                     Set<String> s = Prefs.channelsOff(this);
                     for (int i = 0; i < names.length; i++) {
-                        if (checked[i]) s.remove(names[i]);
+                        if (st[i]) s.remove(names[i]);
                         else s.add(names[i]);
                     }
                     Prefs.putSet(this, "ch_off", s);
                     changed();
                 })
-                .setNeutralButton("סמן הכל", (d, w) -> {
-                    Prefs.putSet(this, "ch_off", new java.util.LinkedHashSet<>());
-                    changed();
-                })
-                .setNegativeButton("ביטול", null)
+                .keepOpenButton("סמן הכל", () -> sh.setAll(true))
                 .show();
     }
 
     private void chooseInterval() {
         int cur = indexOf(Prefs.INTERVALS, Prefs.interval(this));
-        Ui.dialog(this)
-                .setTitle("כל כמה זמן לבדוק את האתרים?")
-                .setSingleChoiceItems(Prefs.INTERVAL_NAMES, cur, (d, w) -> {
+        Sheet.create(this, "כל כמה זמן לבדוק את האתרים?")
+                .choice(Prefs.INTERVAL_NAMES, cur, w -> {
                     Prefs.setInterval(this, Prefs.INTERVALS[w]);
                     changed();
-                    d.dismiss();
                 })
-                .setNegativeButton("ביטול", null)
                 .show();
     }
 
     private void chooseKeep() {
         if (!Prefs.save(this)) return;
         int cur = indexOf(Prefs.KEEP_HOURS, Prefs.keepHours(this));
-        Ui.dialog(this)
-                .setTitle("כמה זמן אחורה לשמור?")
-                .setSingleChoiceItems(Prefs.KEEP_NAMES, cur, (d, w) -> {
+        Sheet.create(this, "כמה זמן אחורה לשמור?", "עדכונים ישנים יותר נמחקים מהנגן, יחד עם התמונות שלהם.")
+                .choice(Prefs.KEEP_NAMES, cur, w -> {
                     Prefs.setKeepHours(this, Prefs.KEEP_HOURS[w]);
                     Store.get(this).purge();
                     updateValues();
-                    d.dismiss();
                 })
-                .setNegativeButton("ביטול", null)
                 .show();
     }
 
@@ -375,29 +370,25 @@ public final class SettingsActivity extends Activity {
             updateValues();
             return;
         }
-        Ui.dialog(this)
-                .setTitle("לכבות את השמירה?")
-                .setMessage("העדכונים השמורים (" + n + ") יימחקו, ומעכשיו הערוצים יתרוקנו כשהאפליקציה נסגרת.")
-                .setPositiveButton("כיבוי ומחיקה", (d, w) -> {
+        Sheet.create(this, "לכבות את השמירה?", "העדכונים השמורים (" + n + ") יימחקו, ומעכשיו הערוצים יתרוקנו כשהאפליקציה נסגרת.")
+                .button("כיבוי ומחיקה", 2, () -> {
                     Store.get(this).clear();
                     Prefs.setSave(this, false);
                     updateValues();
                 })
-                .setNegativeButton("ביטול", (d, w) -> recreate())
-                .setOnCancelListener(d -> recreate())
+                .button("ביטול", 0, this::recreate)
+                .onCancel(this::recreate)
                 .show();
     }
 
     private void confirmClear() {
-        Ui.dialog(this)
-                .setTitle("למחוק את כל העדכונים?")
-                .setMessage("אי אפשר לשחזר את העדכונים אחרי המחיקה.")
-                .setPositiveButton("מחיקה", (d, w) -> {
+        Sheet.create(this, "למחוק את כל העדכונים?", "כל הערוצים יתרוקנו, יחד עם התמונות. אי אפשר לשחזר.")
+                .button("מחיקה", 2, () -> {
                     Store.get(this).clear();
                     Notifier.cancelAll(this);
                     updateValues();
                 })
-                .setNegativeButton("ביטול", null)
+                .button("ביטול", 0, null)
                 .show();
     }
 

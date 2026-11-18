@@ -196,27 +196,92 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
 
     @Override
     public void failed(String id, String error) {
+        if (bulkTotal > 0) return;   // בטעינה מרוכזת לא מציפים בהודעות; הסיכום בסוף
         Toast.makeText(this, "התמונה לא נטענה" + (error != null && error.length() > 0 ? ": " + error : ""), Toast.LENGTH_LONG).show();
     }
 
     @Override
     public void onItemsChanged() {
         reload();
+        updateBulk();
     }
 
     // ---------------------------------------------------------------- שאיבה
 
+    private static final int MODE_MESSAGES = 0, MODE_BOTH = 1, MODE_IMAGES = 2;
+    private int pullMode, pullHours;
+
+    /** שלב 1: מה לשאוב. שלב 2: כמה זמן אחורה. */
     private void choosePull() {
-        if (pulling) return;
+        if (pulling || bulkTotal > 0) return;
         if (LinkService.state != LinkService.CONNECTED) {
             Toast.makeText(this, "צריך חיבור למחשב כדי לשאוב עדכונים", Toast.LENGTH_LONG).show();
             return;
         }
-        Ui.dialog(this)
-                .setTitle("שאיבת עדכונים אחרונים")
-                .setItems(PULL_NAMES, (d, w) -> startPull(PULL_HOURS[w]))
-                .setNegativeButton("ביטול", null)
-                .show();
+        boolean pc = chat.startsWith("pc:");
+        Sheet s = Sheet.create(this, "שאיבת עדכונים", pc ? "מהמחשב יגיעו ההתראות ששמורות במרכז ההודעות של Windows." : "העדכונים נשמרים בערוץ בשקט, בלי פושים.");
+        s.action(Sheet.glyph(this, Glyph.DOWNLOAD, Ui.ACCENT), "הודעות", "רק הטקסט, הכי מהיר", () -> chooseHours(MODE_MESSAGES));
+        if (!pc) {
+            s.action(Sheet.glyph(this, Glyph.DOWNLOAD, 0xFF3B82F6), "הודעות ותמונות", "ההודעות, ואחריהן התמונות שלהן", () -> chooseHours(MODE_BOTH));
+            s.action(Sheet.glyph(this, Glyph.BOX, 0xFF22A06B), "תמונות להודעות קיימות", "טעינת התמונות שחסרות בהודעות שכבר בערוץ", () -> chooseHours(MODE_IMAGES));
+        }
+        s.show();
+    }
+
+    private void chooseHours(int mode) {
+        pullMode = mode;
+        String title = mode == MODE_IMAGES ? "תמונות מכמה זמן אחורה?" : "מכמה זמן אחורה?";
+        Sheet.create(this, title).choice(PULL_NAMES, -1, w -> {
+            pullHours = PULL_HOURS[w];
+            if (mode == MODE_IMAGES) startImages(pullHours);
+            else startPull(pullHours);
+        }).show();
+    }
+
+    // ---- טעינת תמונות מרוכזת, עם התקדמות
+
+    private int bulkTotal;
+    private final java.util.Set<String> bulkKeys = new java.util.HashSet<>();
+
+    private void startImages(int hours) {
+        long cut = System.currentTimeMillis() - hours * 3600000L;
+        int n = 0;
+        bulkKeys.clear();
+        for (Item it : Store.get(this).channel(chat, 3000)) {
+            if (it.time < cut || it.imgCount() == 0) continue;
+            for (int i = 0; i < it.imgCount(); i++) {
+                String k = it.id + "#" + i;
+                if (Images.has(this, it.id, i) || Images.failed.contains(k)) continue;
+                bulkKeys.add(k);
+                n++;
+            }
+            if (Images.missing(this, it) > 0) LinkService.requestImages(this, it);
+        }
+        if (n == 0) {
+            Toast.makeText(this, "אין תמונות חסרות בזמן הזה", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        bulkTotal = n;
+        pullStrip.setVisibility(View.VISIBLE);
+        updateBulk();
+        adapter.notifyDataSetChanged();
+    }
+
+    private void updateBulk() {
+        if (bulkTotal == 0) return;
+        int left = 0;
+        for (String k : bulkKeys) if (Images.loading.contains(k)) left++;
+        int done = bulkTotal - left;
+        pullText.setText("טוען תמונות " + done + " מתוך " + bulkTotal + "…");
+        if (left == 0) {
+            int failed = 0;
+            for (String k : bulkKeys) if (Images.failed.contains(k)) failed++;
+            int ok = bulkTotal - failed;
+            bulkTotal = 0;
+            bulkKeys.clear();
+            pullStrip.setVisibility(View.GONE);
+            Toast.makeText(this, (ok == 1 ? "נטענה תמונה אחת" : "נטענו " + ok + " תמונות") + (failed > 0 ? " (" + failed + " לא זמינות)" : ""), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void startPull(int hours) {
@@ -251,6 +316,8 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
         reload();
         if (error != null && n == 0) Toast.makeText(this, "השאיבה נכשלה: " + error, Toast.LENGTH_LONG).show();
         else Toast.makeText(this, n == 0 ? "לא נמצאו עדכונים נוספים" : "נשאבו " + n + " עדכונים", Toast.LENGTH_SHORT).show();
+        // "הודעות ותמונות": אחרי ההודעות טוענים את התמונות שלהן
+        if (pullMode == MODE_BOTH && error == null) handler.postDelayed(() -> startImages(pullHours), 400);
     }
 
     // ---------------------------------------------------------------- תוכן
@@ -333,7 +400,7 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
         return getResources().getDisplayMetrics().widthPixels - dp(48 + 8 + 12 + 18);
     }
 
-    /** התמונות שבראש הבועה: מה שנטען מוצג, ואם חסר — כפתור "טעינת תמונה". */
+    /** התמונות מתחת לטקסט, בפינות מעוגלות: מה שנטען מוצג, ואם חסר — כפתור "טעינת תמונה". */
     private void bindImages(Holder h, Item it) {
         h.images.removeAllViews();
         int n = it.imgCount();
@@ -342,17 +409,16 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
         int w = imageWidth();
         boolean anyLoading = false;
         int missing = 0;
+        boolean hasText = (it.title != null && it.title.length() > 0) || (it.text != null && it.text.length() > 0);
         for (int i = 0; i < n; i++) {
             if (Images.isLoading(it.id, i)) anyLoading = true;
             android.graphics.Bitmap b = Images.load(this, it.id, i, w);
             if (b == null) { missing++; continue; }
-            ImageView iv = new ImageView(this);
-            iv.setScaleType(ImageView.ScaleType.FIT_XY);
-            iv.setImageBitmap(b);
+            View iv = new View(this);
+            iv.setBackgroundDrawable(new RoundImage(b, dp(12)));
             int hgt = Math.max(dp(40), Math.round(w * (b.getHeight() / (float) b.getWidth())));
             LinearLayout.LayoutParams l = Ui.lp(w, Math.min(hgt, dp(420)));
-            if (hgt > dp(420)) iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            l.bottomMargin = dp(6);
+            l.topMargin = (hasText || h.images.getChildCount() > 0) ? dp(7) : dp(2);
             final int idx = i;
             iv.setOnClickListener(v -> showFull(it, idx));
             h.images.addView(iv, l);
@@ -384,22 +450,54 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
                 adapter.notifyDataSetChanged();
             });
             LinearLayout.LayoutParams bl = Ui.lp(-2, dp(38));
-            bl.bottomMargin = dp(6);
-            bl.topMargin = dp(2);
+            bl.topMargin = hasText || h.images.getChildCount() > 0 ? dp(8) : dp(2);
             h.images.addView(btn, bl);
         }
     }
 
-    /** תמונה במסך מלא; לחיצה סוגרת. */
+    /** תמונה במסך מלא על רקע מטושטש של המסך (לא שחור). לחיצה סוגרת. */
     private void showFull(Item it, int idx) {
-        android.app.Dialog d = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        ImageView iv = new ImageView(this);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setBackgroundColor(0xFF000000);
-        iv.setImageBitmap(Images.load(this, it.id, idx, getResources().getDisplayMetrics().widthPixels));
-        iv.setOnClickListener(v -> d.dismiss());
-        d.setContentView(iv);
+        android.graphics.Bitmap img = Images.load(this, it.id, idx, getResources().getDisplayMetrics().widthPixels);
+        if (img == null) return;
+        android.graphics.Bitmap bg = null;
+        try {
+            View root = getWindow().getDecorView();
+            android.graphics.Bitmap shot = android.graphics.Bitmap.createBitmap(Math.max(1, root.getWidth() / 2), Math.max(1, root.getHeight() / 2), android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(shot);
+            c.scale(0.5f, 0.5f);
+            root.draw(c);
+            bg = RoundImage.blur(shot, 5, 4);
+            shot.recycle();
+        } catch (Throwable ignored) { }
+
+        android.app.Dialog d = new android.app.Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+        FrameLayout f = new FrameLayout(this);
+        if (bg != null) {
+            android.graphics.drawable.BitmapDrawable bd = new android.graphics.drawable.BitmapDrawable(getResources(), bg);
+            bd.setFilterBitmap(true);
+            f.setBackgroundDrawable(bd);
+        } else {
+            f.setBackgroundColor(0xFFEDE7E3);
+        }
+        View tint = new View(this);
+        tint.setBackgroundColor(0x33000000);   // הכהיה קלה בלבד, כדי שהתמונה תבלוט
+        f.addView(tint, new FrameLayout.LayoutParams(-1, -1));
+
+        int sw = getResources().getDisplayMetrics().widthPixels - dp(24);
+        int sh = getResources().getDisplayMetrics().heightPixels - dp(80);
+        float scale = Math.min(sw / (float) img.getWidth(), sh / (float) img.getHeight());
+        View pic = new View(this);
+        pic.setBackgroundDrawable(new RoundImage(img, dp(14)));
+        if (android.os.Build.VERSION.SDK_INT >= 21) pic.setElevation(dp(8));
+        f.addView(pic, new FrameLayout.LayoutParams(Math.round(img.getWidth() * scale), Math.round(img.getHeight() * scale), Gravity.CENTER));
+        f.setOnClickListener(v -> d.dismiss());
+        d.setContentView(f);
         d.show();
+        f.setAlpha(0f);
+        f.animate().alpha(1f).setDuration(180).start();
+        pic.setScaleX(0.92f);
+        pic.setScaleY(0.92f);
+        pic.animate().scaleX(1f).scaleY(1f).setDuration(200).start();
     }
 
     private final class Adapter extends BaseAdapter {
@@ -438,14 +536,15 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
                 LinearLayout bubble = Ui.col(ChannelActivity.this);
                 bubble.setBackgroundDrawable(new Bubble(getResources().getDisplayMetrics().density));
                 bubble.setPadding(dp(12), dp(7), dp(12 + 6), dp(6));   // מקום לזנב בצד ימין
-                h.images = Ui.col(ChannelActivity.this);
-                h.images.setGravity(Gravity.CENTER_HORIZONTAL);
-                bubble.addView(h.images, Ui.lp(-2, -2));
                 h.title = Ui.text(ChannelActivity.this, "", 15.5f, Ui.TG_NAME, true);
                 bubble.addView(h.title, Ui.lp(-2, -2));
                 h.text = Ui.text(ChannelActivity.this, "", 15.5f, 0xFF111418, false);
                 h.text.setLineSpacing(0, 1.12f);
                 bubble.addView(h.text, Ui.lp(-2, -2));
+                // התמונות מתחת לטקסט
+                h.images = Ui.col(ChannelActivity.this);
+                h.images.setGravity(Gravity.CENTER_HORIZONTAL);
+                bubble.addView(h.images, Ui.lp(-2, -2));
                 h.time = Ui.text(ChannelActivity.this, "", 11.5f, Ui.TG_IN_TIME, false);
                 LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
                 tl.gravity = Gravity.END;

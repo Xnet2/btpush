@@ -156,10 +156,29 @@ public final class LinkService extends Service {
                 o.put("idx", i);
                 o.put("url", urls[i]);
                 Images.loading.add(it.id + "#" + i);
-                s.send(o.toString());
+                synchronized (imageQueue) { imageQueue.add(o.toString()); }
             } catch (Exception ignored) { }
         }
+        s.pumpImages();
         return true;
+    }
+
+    // תור בקשות תמונה: לכל היותר 3 בבת אחת, כדי לא להעמיס על המחשב ועל הבלוטות'
+    private static final java.util.ArrayDeque<String> imageQueue = new java.util.ArrayDeque<>();
+    private static int imagesInFlight;
+
+    private void pumpImages() {
+        synchronized (imageQueue) {
+            while (imagesInFlight < 3 && !imageQueue.isEmpty()) {
+                imagesInFlight++;
+                send(imageQueue.poll());
+            }
+        }
+    }
+
+    private void imageDone() {
+        synchronized (imageQueue) { imagesInFlight = Math.max(0, imagesInFlight - 1); }
+        pumpImages();
     }
 
     // ---------------------------------------------------------------- שאיבה
@@ -254,6 +273,7 @@ public final class LinkService extends Service {
             if (conn == s) {
                 conn = null;
                 out = null;
+                synchronized (imageQueue) { imageQueue.clear(); imagesInFlight = 0; }
                 if (!Images.loading.isEmpty()) { Images.loading.clear(); itemsChanged(); }
                 BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
                 setState(a != null && a.isEnabled() ? WAITING : OFF);
@@ -321,6 +341,7 @@ public final class LinkService extends Service {
                 int idx = o.optInt("idx", 0);
                 try { Images.save(this, id, idx, o.optString("data")); } catch (Exception ignored) { }
                 Images.loading.remove(id + "#" + idx);
+                imageDone();
                 itemsChanged();
                 break;
             }
@@ -329,6 +350,8 @@ public final class LinkService extends Service {
                 int idx = o.optInt("idx", 0);
                 String err = o.optString("error", "");
                 Images.loading.remove(id + "#" + idx);
+                Images.failed.add(id + "#" + idx);
+                imageDone();
                 main.post(() -> {
                     ImageCallback cb = imageCallback;
                     if (cb != null) cb.failed(id, err);

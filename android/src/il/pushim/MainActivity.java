@@ -525,40 +525,53 @@ public final class MainActivity extends Activity implements LinkService.Listener
             Toast.makeText(this, "צריך חיבור למחשב כדי לשאוב עדכונים", Toast.LENGTH_LONG).show();
             return;
         }
-        final List<String> keys = new ArrayList<>();
-        List<String> names = new ArrayList<>();
-        keys.add("hagizra");
-        names.add("הגיזרה");
-        for (String ch : Prefs.knownChannels(this)) {
-            keys.add("a:" + ch);
-            names.add(ch + "  ·  אותנטי");
+        Sheet s = Sheet.create(this, "מאיזה ערוץ לשאוב?");
+        s.header("הגיזרה");
+        addPullRow(s, "hagizra", "hagizra.news");
+        List<String> chs = Prefs.knownChannels(this);
+        if (!chs.isEmpty()) {
+            s.header("אותנטי");
+            for (String ch : chs) addPullRow(s, "a:" + ch, null);
         }
-        for (String[] app : Prefs.knownApps(this)) {
-            keys.add("pc:" + app[0]);
-            names.add(app[1] + "  ·  מחשב");
+        List<String[]> apps = Prefs.knownApps(this);
+        if (!apps.isEmpty()) {
+            s.header("המחשב");
+            for (String[] app : apps) addPullRow(s, "pc:" + app[0], "ההתראות ששמורות ב-Windows");
         }
-        Ui.dialog(this)
-                .setTitle("מאיזה ערוץ לשאוב?")
-                .setItems(names.toArray(new String[0]), (d, w) -> {
-                    Intent i = new Intent(this, ChannelActivity.class);
-                    i.putExtra("chat", keys.get(w));
-                    i.putExtra("pull", true);
-                    startActivity(i);
-                })
-                .setNegativeButton("ביטול", null)
-                .show();
+        s.show();
+    }
+
+    private void addPullRow(Sheet s, String key, String sub) {
+        Item it = Item.forChat(this, key);
+        s.action(Sheet.avatar(this, it), it.chatName(), sub, () -> {
+            Intent i = new Intent(this, ChannelActivity.class);
+            i.putExtra("chat", key);
+            i.putExtra("pull", true);
+            startActivity(i);
+        });
     }
 
     /** לחיצה ארוכה: השתקה, סימון כנקרא, ניקוי היסטוריה. */
     private void menu(Store.Chat ch) {
         boolean muted = Prefs.muted(this, ch.key);
-        String[] opts = {muted ? "ביטול השתקה" : "השתקה (בלי פושים)", "סימון כנקרא", "ניקוי היסטוריה"};
-        Ui.dialog(this)
-                .setTitle(ch.last.chatName())
-                .setItems(opts, (d, w) -> {
-                    if (w == 0) Prefs.setMuted(this, ch.key, !muted);
-                    else if (w == 1) Prefs.markRead(this, ch.key);
-                    else Store.get(this).clearChat(ch.key);
+        Sheet.create(this, ch.last.chatName())
+                .action(Sheet.glyph(this, muted ? Glyph.BELL : Glyph.BELL_OFF, Ui.ACCENT),
+                        muted ? "ביטול השתקה" : "השתקה", muted ? "הפושים מהערוץ יחזרו" : "העדכונים ימשיכו להגיע, בלי פוש", () -> {
+                            Prefs.setMuted(this, ch.key, !muted);
+                            refresh();
+                        })
+                .action(Sheet.glyph(this, Glyph.CHECK, 0xFF22A06B), "סימון כנקרא", null, () -> {
+                    Prefs.markRead(this, ch.key);
+                    refresh();
+                })
+                .action(Sheet.glyph(this, Glyph.DOWNLOAD, 0xFF3B82F6), "שאיבת עדכונים אחרונים", null, () -> {
+                    Intent i = new Intent(this, ChannelActivity.class);
+                    i.putExtra("chat", ch.key);
+                    i.putExtra("pull", true);
+                    startActivity(i);
+                })
+                .action(Sheet.glyph(this, Glyph.CLOSE, Ui.RED), "ניקוי היסטוריה", "מחיקת כל העדכונים בערוץ", Ui.RED, () -> {
+                    Store.get(this).clearChat(ch.key);
                     refresh();
                 })
                 .show();
