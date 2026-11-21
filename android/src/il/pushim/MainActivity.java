@@ -52,7 +52,7 @@ public final class MainActivity extends Activity implements LinkService.Listener
     private LinearLayout normalBar, searchBar, chipsRow;
     private HorizontalScrollView chipsScroll;
     private EditText searchField;
-    private Glyph searchClear;
+    private Glyph searchClear, readAllButton;
     private boolean searching;
     private LinearLayout emptyPull;
     private FrameLayout fab;
@@ -90,6 +90,9 @@ public final class MainActivity extends Activity implements LinkService.Listener
         status.setOnClickListener(v -> onStatusClick());
         titles.addView(status);
         normalBar.addView(titles, Ui.lp(0, -2, 1));
+        readAllButton = Ui.iconButton(this, Glyph.CHECK, 0xFF5F6670, v -> markAllRead());
+        readAllButton.setVisibility(View.GONE);
+        normalBar.addView(readAllButton);
         normalBar.addView(Ui.iconButton(this, Glyph.SEARCH, 0xFF5F6670, v -> openSearch()));
         normalBar.addView(Ui.iconButton(this, Glyph.GEAR, 0xFF5F6670, v -> startActivity(new Intent(this, SettingsActivity.class))));
         header.addView(normalBar, Ui.lp(-1, -2));
@@ -316,11 +319,20 @@ public final class MainActivity extends Activity implements LinkService.Listener
             emptyTitle.setText(q.length() == 0 ? "חיפוש" : "לא נמצאו תוצאות");
             emptyText.setText(q.length() == 0 ? "מקלידים שם של ערוץ או מילה מתוך הודעה" : "נסו מילה אחרת");
         } else {
+            // "כל החדשות" בראש הרשימה: הפיד המאוחד של הגיזרה ואותנטי
+            if (filter == null) {
+                Store.Chat feed = feedRow(all, null);
+                if (feed != null) rows.add(feed);
+            }
             for (Store.Chat ch : all) if (filter == null || filter.equals(ch.last.src)) rows.add(ch);
             emptyTitle.setText("עדיין אין עדכונים");
             emptyText.setText("כשהמחשב יתחבר בבלוטות', כל ידיעה והתראה חדשה תופיע כאן בערוץ משלה");
         }
         adapter.notifyDataSetChanged();
+        // כפתור "סמן הכל כנקרא" מופיע רק כשיש מה לסמן בתיקייה הנוכחית
+        int unreadHere = 0;
+        for (Store.Chat ch : all) if (filter == null || filter.equals(ch.last.src)) unreadHere += ch.unread;
+        readAllButton.setVisibility(!searching && unreadHere > 0 ? View.VISIBLE : View.GONE);
         empty.setVisibility(rows.isEmpty() ? View.VISIBLE : View.GONE);
         emptyPull.setVisibility(searching ? View.GONE : View.VISIBLE);
         fab.setVisibility(searching || rows.isEmpty() ? View.GONE : View.VISIBLE);
@@ -473,12 +485,13 @@ public final class MainActivity extends Activity implements LinkService.Listener
     private void bindChat(Holder h, Store.Chat ch) {
         h.data = ch;
         Item it = ch.last;
-        boolean muted = Prefs.muted(this, ch.key);
-        h.avatar.setImageBitmap(Icons.get(this, it, dp(48)));
-        h.name.setText(searching ? highlight(it.chatName(), query) : it.chatName());
+        boolean isFeed = ChannelActivity.FEED.equals(ch.key);
+        boolean muted = !isFeed && Prefs.muted(this, ch.key);
+        h.avatar.setImageBitmap(isFeed ? feedIcon(dp(48)) : Icons.get(this, it, dp(48)));
+        h.name.setText(isFeed ? "כל החדשות" : searching ? highlight(it.chatName(), query) : it.chatName());
         h.mute.setVisibility(muted ? View.VISIBLE : View.GONE);
         h.time.setText(when(it.time));
-        h.preview.setText(it.preview());
+        h.preview.setText(isFeed ? it.chatName() + ": " + it.preview() : it.preview());
         h.badge.setVisibility(ch.unread > 0 ? View.VISIBLE : View.GONE);
         h.badge.setText(ch.unread > 999 ? "999+" : String.valueOf(ch.unread));
         h.badge.setBackgroundDrawable(Ui.round(muted ? Ui.TG_COUNTER_MUTED : Ui.ACCENT, dp(10.5f)));
@@ -494,6 +507,54 @@ public final class MainActivity extends Activity implements LinkService.Listener
         h.time.setTextColor(Ui.TG_DATE);
         h.preview.setText(highlight(snippet(it, query), query));
         h.badge.setVisibility(View.GONE);
+    }
+
+    // ---------------------------------------------------------------- כל החדשות + סמן הכל
+
+    /** שורת "כל החדשות": ההודעה האחרונה מכל ערוצי החדשות, וסכום מה שלא נקרא בהם. */
+    private Store.Chat feedRow(List<Store.Chat> all, String onlySrc) {
+        Store.Chat feed = new Store.Chat();
+        feed.key = ChannelActivity.FEED;
+        for (Store.Chat ch : all) {
+            if (!Store.isNews(ch.last.src)) continue;
+            if (onlySrc != null && !onlySrc.equals(ch.last.src)) continue;
+            if (feed.last == null || ch.last.time > feed.last.time) feed.last = ch.last;
+            feed.count += ch.count;
+            if (!Prefs.muted(this, ch.key)) feed.unread += ch.unread;
+        }
+        // שווה להציג רק כשיש יותר מערוץ חדשות אחד
+        int newsChats = 0;
+        for (Store.Chat ch : all) if (Store.isNews(ch.last.src)) newsChats++;
+        return feed.last == null || newsChats < 2 ? null : feed;
+    }
+
+    private android.graphics.Bitmap feedBmp;
+
+    /** הלוגו של "כל החדשות": עיגול בגרדיאנט אפרסק-קורל עם אייקון גלים. */
+    private android.graphics.Bitmap feedIcon(int size) {
+        if (feedBmp != null && feedBmp.getWidth() == size) return feedBmp;
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new android.graphics.LinearGradient(0, 0, size, size, 0xFFFFB08A, 0xFFFF5E6C, android.graphics.Shader.TileMode.CLAMP));
+        c.drawCircle(size / 2f, size / 2f, size / 2f, p);
+        Glyph.draw(c, Glyph.WAVES, size / 2f + size * 0.05f, size / 2f - size * 0.04f, size * 0.42f, 0xFFFFFFFF);
+        feedBmp = b;
+        return b;
+    }
+
+    /** סמן הכל כנקרא בתיקייה הנוכחית, ומנקה את הפושים שלה משורת ההתראות. */
+    private void markAllRead() {
+        int n = 0;
+        for (Store.Chat ch : Store.get(this).chats(null)) {
+            if (filter != null && !filter.equals(ch.last.src)) continue;
+            if (ch.unread == 0) continue;
+            n += ch.unread;
+            Prefs.markRead(this, ch.key);
+            Notifier.cancelChat(this, ch.key);
+        }
+        refresh();
+        if (n > 0) Toast.makeText(this, n == 1 ? "עדכון אחד סומן כנקרא" : n + " עדכונים סומנו כנקראו", Toast.LENGTH_SHORT).show();
     }
 
     private void open(Object data) {
@@ -553,6 +614,19 @@ public final class MainActivity extends Activity implements LinkService.Listener
 
     /** לחיצה ארוכה: השתקה, סימון כנקרא, ניקוי היסטוריה. */
     private void menu(Store.Chat ch) {
+        if (ChannelActivity.FEED.equals(ch.key)) {
+            Sheet.create(this, "כל החדשות")
+                    .action(Sheet.glyph(this, Glyph.CHECK, 0xFF22A06B), "סימון כל החדשות כנקראו", null, () -> {
+                        for (Store.Chat c : Store.get(this).chats(null)) {
+                            if (!Store.isNews(c.last.src)) continue;
+                            Prefs.markRead(this, c.key);
+                            Notifier.cancelChat(this, c.key);
+                        }
+                        refresh();
+                    })
+                    .show();
+            return;
+        }
         boolean muted = Prefs.muted(this, ch.key);
         Sheet.create(this, ch.last.chatName())
                 .action(Sheet.glyph(this, muted ? Glyph.BELL : Glyph.BELL_OFF, Ui.ACCENT),

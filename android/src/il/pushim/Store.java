@@ -154,6 +154,25 @@ final class Store extends SQLiteOpenHelper {
         return out;
     }
 
+    /** "כל החדשות": ההודעות מכל ערוצי החדשות (בלי התראות המחשב), מהישן לחדש. */
+    synchronized List<Item> feed(int limit) {
+        List<Item> out = new ArrayList<>();
+        if (!Prefs.save(app)) {
+            for (Item m : mem) if (isNews(m.src)) out.add(m);
+            Collections.reverse(out);
+            return out;
+        }
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT * FROM items WHERE src IN ('hagizra', 'authenti') ORDER BY time DESC LIMIT " + limit, null);
+        try { while (c.moveToNext()) out.add(read(c)); } finally { c.close(); }
+        Collections.reverse(out);
+        return out;
+    }
+
+    static boolean isNews(String src) {
+        return "hagizra".equals(src) || "authenti".equals(src);
+    }
+
     /** חיפוש בהודעות (כותרת, טקסט ושם הערוץ), מהחדש לישן. */
     synchronized List<Item> search(String q, int limit) {
         List<Item> out = new ArrayList<>();

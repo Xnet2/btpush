@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
@@ -35,6 +36,9 @@ import java.util.Locale;
 public final class ChannelActivity extends Activity implements LinkService.Listener, LinkService.BackfillCallback, LinkService.ImageCallback {
     /** הערוץ שפתוח עכשיו — עליו לא מקפיצים פוש (כמו בטלגרם). */
     static volatile String openChat;
+    /** מפתח מיוחד: "כל החדשות" — כל ההודעות מהגיזרה ומאותנטי ברצף אחד. */
+    static final String FEED = "feed:news";
+    private boolean feed;
 
     private static final String[] DAYS = {"ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"};
     private static final String[] MONTHS = {"בינואר", "בפברואר", "במרץ", "באפריל", "במאי", "ביוני", "ביולי", "באוגוסט", "בספטמבר", "באוקטובר", "בנובמבר", "בדצמבר"};
@@ -57,6 +61,7 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         chat = getIntent().getStringExtra("chat");
+        feed = FEED.equals(chat);
         focusId = getIntent().getStringExtra("focus");
         if (chat == null) { finish(); return; }
 
@@ -83,7 +88,7 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
         subtitle = Ui.text(this, "", 13, Ui.TG_SUBTITLE, false);
         titles.addView(subtitle);
         bar.addView(titles, Ui.lp(0, -2, 1));
-        bar.addView(Ui.iconButton(this, Glyph.DOWNLOAD, 0xFF5F6670, v -> choosePull()));
+        if (!feed) bar.addView(Ui.iconButton(this, Glyph.DOWNLOAD, 0xFF5F6670, v -> choosePull()));
         header.addView(bar, Ui.lp(-1, -2));
 
         // פס התקדמות של שאיבה
@@ -167,6 +172,7 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
             updateHeader();
         });
         root.addView(muteBar, Ui.lp(-1, dp(42)));
+        if (feed) { muteBar.setVisibility(View.GONE); line.setVisibility(View.GONE); }   // השתקה ושאיבה — לכל ערוץ בנפרד
         setContentView(root);
         // נפתח מכפתור השאיבה שבמסך הראשי: מציגים מיד את בחירת הזמן
         if (getIntent().getBooleanExtra("pull", false)) list.post(this::choosePull);
@@ -180,7 +186,8 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
         LinkService.backfillCallback = this;
         LinkService.imageCallback = this;
         reload();
-        Notifier.cancelChat(this, chat);
+        if (feed) { for (String k : newsChats()) Notifier.cancelChat(this, k); }
+        else Notifier.cancelChat(this, chat);
     }
 
     @Override
@@ -213,7 +220,7 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
 
     /** שלב 1: מה לשאוב. שלב 2: כמה זמן אחורה. */
     private void choosePull() {
-        if (pulling || bulkTotal > 0) return;
+        if (feed || pulling || bulkTotal > 0) return;
         if (LinkService.state != LinkService.CONNECTED) {
             Toast.makeText(this, "צריך חיבור למחשב כדי לשאוב עדכונים", Toast.LENGTH_LONG).show();
             return;
@@ -323,15 +330,17 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
     // ---------------------------------------------------------------- תוכן
 
     private void reload() {
-        List<Item> items = Store.get(this).channel(chat, 1500);
-        Prefs.markRead(this, chat);
+        List<Item> items = feed ? Store.get(this).feed(1500) : Store.get(this).channel(chat, 1500);
+        if (feed) { for (String k : newsChats()) Prefs.markRead(this, k); }
+        else Prefs.markRead(this, chat);
         count = items.size();
         emptyCard.setVisibility(items.isEmpty() && !pulling ? View.VISIBLE : View.GONE);
         if (items.isEmpty()) {
             rows.clear();
             Item fake = Item.forChat(this, chat);
-            avatar.setImageBitmap(Icons.get(this, fake, dp(38)));
-            name.setText(fake.chatName());
+            avatar.setImageBitmap(feed ? feedIcon(dp(38)) : Icons.get(this, fake, dp(38)));
+            name.setText(feed ? "כל החדשות" : fake.chatName());
+            if (feed) emptyCard.setVisibility(View.GONE);
             updateHeader();
             adapter.notifyDataSetChanged();
             return;
@@ -346,8 +355,13 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
             rows.add(it);
         }
         Item last = items.get(items.size() - 1);
-        avatar.setImageBitmap(Icons.get(this, last, dp(38)));
-        name.setText(last.chatName());
+        if (feed) {
+            avatar.setImageBitmap(feedIcon(dp(38)));
+            name.setText("כל החדשות");
+        } else {
+            avatar.setImageBitmap(Icons.get(this, last, dp(38)));
+            name.setText(last.chatName());
+        }
         updateHeader();
         adapter.notifyDataSetChanged();
         if (focusRow >= 0) {
@@ -358,7 +372,34 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
         }
     }
 
+    /** מפתחות כל ערוצי החדשות (הגיזרה וערוצי אותנטי) שיש בהם עדכונים. */
+    private List<String> newsChats() {
+        List<String> out = new ArrayList<>();
+        for (Store.Chat c : Store.get(this).chats(null)) if (Store.isNews(c.last.src)) out.add(c.key);
+        return out;
+    }
+
+    /** צבע קבוע לכל שם ערוץ (כמו צבעי השולחים בקבוצות בטלגרם), כהה מספיק לקריאה. */
+    private static int nameColor(String name) {
+        int[] colors = {0xFFD9534F, 0xFF2F7CF6, 0xFF8B5CF6, 0xFF12A594, 0xFFE07B00, 0xFFD6336C, 0xFF0B8BC2, 0xFF5E8E1C};
+        return colors[(name.hashCode() & 0x7FFFFFFF) % colors.length];
+    }
+
+    private android.graphics.Bitmap feedIcon(int size) {
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new android.graphics.LinearGradient(0, 0, size, size, 0xFFFFB08A, 0xFFFF5E6C, android.graphics.Shader.TileMode.CLAMP));
+        c.drawCircle(size / 2f, size / 2f, size / 2f, p);
+        Glyph.draw(c, Glyph.WAVES, size / 2f + size * 0.05f, size / 2f - size * 0.04f, size * 0.42f, 0xFFFFFFFF);
+        return b;
+    }
+
     private void updateHeader() {
+        if (feed) {
+            subtitle.setText(count + " עדכונים מכל ערוצי החדשות");
+            return;
+        }
         boolean m = Prefs.muted(this, chat);
         subtitle.setText((count == 0 ? "אין עדיין עדכונים" : count == 1 ? "עדכון אחד" : count + " עדכונים") + (m ? " · מושתק" : ""));
         muteText.setText(m ? "ביטול השתקה" : "השתקה");
@@ -390,8 +431,9 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
     // ---------------------------------------------------------------- בועות
 
     private static final class Holder {
-        LinearLayout bubble, images;
-        TextView title, text, time;
+        LinearLayout bubble, images, from;
+        ImageView fromIcon;
+        TextView title, text, time, fromName;
         Item item;
     }
 
@@ -536,6 +578,26 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
                 LinearLayout bubble = Ui.col(ChannelActivity.this);
                 bubble.setBackgroundDrawable(new Bubble(getResources().getDisplayMetrics().density));
                 bubble.setPadding(dp(12), dp(7), dp(12 + 6), dp(6));   // מקום לזנב בצד ימין
+                // בפיד המאוחד: לוגו ושם הערוץ מעל ההודעה (כמו שם השולח בקבוצה בטלגרם)
+                h.from = Ui.row(ChannelActivity.this);
+                h.fromIcon = new ImageView(ChannelActivity.this);
+                h.from.addView(h.fromIcon, Ui.lp(dp(18), dp(18)));
+                h.fromName = Ui.text(ChannelActivity.this, "", 13.5f, Ui.ACCENT, true);
+                h.fromName.setSingleLine(true);
+                h.fromName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                h.fromName.setPadding(0, 0, dp(6), 0);
+                h.from.addView(h.fromName, Ui.lp(-2, -2));
+                LinearLayout.LayoutParams fl = Ui.lp(-2, -2);
+                fl.bottomMargin = dp(3);
+                bubble.addView(h.from, fl);
+                final Holder fh0 = h;
+                h.from.setOnClickListener(x -> {
+                    if (fh0.item == null) return;
+                    Intent ci = new Intent(ChannelActivity.this, ChannelActivity.class);
+                    ci.putExtra("chat", fh0.item.chat());
+                    ci.putExtra("focus", fh0.item.id);
+                    startActivity(ci);
+                });
                 h.title = Ui.text(ChannelActivity.this, "", 15.5f, Ui.TG_NAME, true);
                 bubble.addView(h.title, Ui.lp(-2, -2));
                 h.text = Ui.text(ChannelActivity.this, "", 15.5f, 0xFF111418, false);
@@ -561,6 +623,12 @@ public final class ChannelActivity extends Activity implements LinkService.Liste
             }
             Item it = (Item) o;
             h.item = it;
+            h.from.setVisibility(feed ? View.VISIBLE : View.GONE);
+            if (feed) {
+                h.fromIcon.setImageBitmap(Icons.get(ChannelActivity.this, it, dp(18)));
+                h.fromName.setText(it.chatName());
+                h.fromName.setTextColor(nameColor(it.chatName()));
+            }
             boolean hasTitle = it.title != null && it.title.length() > 0;
             boolean hasText = it.text != null && it.text.length() > 0;
             h.title.setVisibility(hasTitle ? View.VISIBLE : View.GONE);

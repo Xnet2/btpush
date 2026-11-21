@@ -107,7 +107,7 @@ public final class SettingsActivity extends Activity {
         divider(menu, 64);
         navRow(menu, Glyph.BT, C_CONN, "חיבור למחשב", CONNECTION).setText("שיוך, בדיקה והוראות");
 
-        TextView ver = Ui.center(Ui.text(this, "גרסה 1.7", 13, Ui.TG_GRAY_TEXT, false));
+        TextView ver = Ui.center(Ui.text(this, "גרסה 1.8", 13, Ui.TG_GRAY_TEXT, false));
         ver.setPadding(0, dp(18), 0, 0);
         content.addView(ver, Ui.lp(-1, -2));
     }

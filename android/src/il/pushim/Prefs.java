@@ -47,7 +47,9 @@ final class Prefs {
 
     /** האם להקפיץ פוש על הפריט הזה. */
     static boolean shouldPush(Context c, Item it) {
-        return pushes(c) && !muted(c, it.chat()) && !it.chat().equals(ChannelActivity.openChat);
+        String open = ChannelActivity.openChat;
+        if (ChannelActivity.FEED.equals(open) && Store.isNews(it.src)) return false;   // הפיד המאוחד פתוח
+        return pushes(c) && !muted(c, it.chat()) && !it.chat().equals(open);
     }
 
     static boolean sound(Context c) { return sp(c).getBoolean("sound", true); }
